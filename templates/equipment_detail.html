@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ equipment.hostname }} - IT Inventory</title>
+    <title>{{ equipment.hostname or equipment.ip_address }} - IT Inventory</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
 </head>
@@ -11,64 +11,50 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="/">IT Inventory</a>
+            <div>
+                <a href="/equipment" class="btn btn-outline-light me-2">
+                    <i class="bi bi-arrow-left"></i> Назад
+                </a>
+                <a href="/equipment/{{ equipment.id }}/edit" class="btn btn-warning">
+                    <i class="bi bi-pencil"></i> Редактировать
+                </a>
+            </div>
         </div>
     </nav>
 
-    <!-- Flash Messages -->
-    <div class="container mt-3">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-    </div>
-
     <div class="container mt-4">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/">Главная</a></li>
-                <li class="breadcrumb-item"><a href="/equipment">Оборудование</a></li>
-                <li class="breadcrumb-item active">{{ equipment.hostname or equipment.ip_address }}</li>
-            </ol>
-        </nav>
-
-        <div class="card shadow-sm">
+        <div class="card">
             <div class="card-header bg-primary text-white">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h4 class="card-title mb-0">
-                        <i class="bi bi-pc-display me-2"></i>
-                        {{ equipment.hostname or 'Неизвестное устройство' }}
-                    </h4>
-                    <span class="badge {% if equipment.is_active %}bg-success{% else %}bg-secondary{% endif %}">
-                        {% if equipment.is_active %}Активно{% else %}Неактивно{% endif %}
-                    </span>
-                </div>
+                <h4 class="mb-0">
+                    <i class="bi bi-pc-display-horizontal me-2"></i>
+                    {{ equipment.hostname or 'Неизвестное устройство' }}
+                    <small class="text-light">({{ equipment.ip_address }})</small>
+                </h4>
             </div>
+            
             <div class="card-body">
                 <div class="row">
                     <!-- Основная информация -->
                     <div class="col-md-6">
-                        <h5 class="border-bottom pb-2">Основная информация</h5>
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-info-circle me-2"></i>Основная информация
+                        </h5>
+                        
                         <table class="table table-borderless">
                             <tr>
                                 <th width="40%">IP-адрес:</th>
-                                <td><strong>{{ equipment.ip_address }}</strong></td>
+                                <td><code class="fs-5">{{ equipment.ip_address }}</code></td>
+                            </tr>
+                            <tr>
+                                <th>Имя устройства:</th>
+                                <td>{{ equipment.hostname or '<span class="text-muted">Не указано</span>'|safe }}</td>
                             </tr>
                             <tr>
                                 <th>MAC-адрес:</th>
                                 <td><code>{{ equipment.mac_address or 'Неизвестно' }}</code></td>
                             </tr>
                             <tr>
-                                <th>Имя устройства:</th>
-                                <td>{{ equipment.hostname or 'Неизвестно' }}</td>
-                            </tr>
-                            <tr>
-                                <th>VLAN:</th>
+                                <th>VLAN ID:</th>
                                 <td>
                                     {% if equipment.vlan_id %}
                                     <span class="badge bg-info">VLAN {{ equipment.vlan_id }}</span>
@@ -77,12 +63,25 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            <tr>
+                                <th>Статус:</th>
+                                <td>
+                                    {% if equipment.is_active %}
+                                    <span class="badge bg-success">Активно</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивно</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
                         </table>
                     </div>
-
-                    <!-- Системная информация -->
+                    
+                    <!-- Техническая информация -->
                     <div class="col-md-6">
-                        <h5 class="border-bottom pb-2">Системная информация</h5>
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-gear me-2"></i>Техническая информация
+                        </h5>
+                        
                         <table class="table table-borderless">
                             <tr>
                                 <th width="40%">Операционная система:</th>
@@ -90,81 +89,132 @@
                             </tr>
                             <tr>
                                 <th>Версия ОС:</th>
-                                <td>{{ equipment.os_version or 'Неизвестно' }}</td>
+                                <td>{{ equipment.os_version or 'Не указана' }}</td>
                             </tr>
                             <tr>
-                                <th>Архитектура:</th>
-                                <td>{{ equipment.architecture or 'Неизвестно' }}</td>
+                                <th>Производитель:</th>
+                                <td>{{ equipment.manufacturer or 'Не указан' }}</td>
                             </tr>
                             <tr>
-                                <th>Процессор:</th>
-                                <td>{{ equipment.cpu_model or 'Неизвестно' }}</td>
+                                <th>Модель:</th>
+                                <td>{{ equipment.model or 'Не указана' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Серийный номер:</th>
+                                <td>{{ equipment.serial_number or 'Не указан' }}</td>
                             </tr>
                         </table>
                     </div>
                 </div>
-
-                <!-- Административная информация -->
+                
+                <!-- Организационная информация -->
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-building me-2"></i>Организационная информация
+                        </h5>
+                        
+                        <table class="table table-borderless">
+                            <tr>
+                                <th width="40%">Отдел:</th>
+                                <td>
+                                    {% if equipment.department %}
+                                    <span class="badge bg-info">{{ equipment.department }}</span>
+                                    {% else %}
+                                    <span class="text-muted">Не указан</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Инвентарный номер:</th>
+                                <td>{{ equipment.inventory_number or 'Не указан' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Расположение:</th>
+                                <td>{{ equipment.location or 'Не указано' }}</td>
+                            </tr>
+                            <tr>
+                                <th>Ответственное лицо:</th>
+                                <td>{{ equipment.responsible_person or 'Не указано' }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <!-- Временные метки -->
+                    <div class="col-md-6">
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-clock-history me-2"></i>Временные метки
+                        </h5>
+                        
+                        <table class="table table-borderless">
+                            <tr>
+                                <th width="40%">Впервые обнаружено:</th>
+                                <td>
+                                    {% if equipment.first_discovered %}
+                                        {{ equipment.first_discovered.strftime('%d.%m.%Y %H:%M') }}
+                                    {% else %}
+                                        <span class="text-muted">Нет данных</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Последняя активность:</th>
+                                <td>
+                                    {% if equipment.last_seen %}
+                                        {{ equipment.last_seen.strftime('%d.%m.%Y %H:%M') }}
+                                    {% else %}
+                                        <span class="text-muted">Нет данных</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Обновлено:</th>
+                                <td>
+                                    {% if equipment.updated_at %}
+                                        {{ equipment.updated_at.strftime('%d.%m.%Y %H:%M') }}
+                                    {% else %}
+                                        <span class="text-muted">Нет данных</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Описание -->
+                {% if equipment.description %}
                 <div class="row mt-4">
                     <div class="col-12">
-                        <h5 class="border-bottom pb-2">Административная информация</h5>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <strong>Инвентарный номер:</strong><br>
-                                {{ equipment.inventory_number or 'Не указан' }}
-                            </div>
-                            <div class="col-md-4">
-                                <strong>Местоположение:</strong><br>
-                                {{ equipment.location or 'Не указано' }}
-                            </div>
-                            <div class="col-md-4">
-                                <strong>Ответственный:</strong><br>
-                                {{ equipment.responsible_person or 'Не указан' }}
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-card-text me-2"></i>Описание / Примечания
+                        </h5>
+                        <div class="card">
+                            <div class="card-body">
+                                {{ equipment.description|replace('\n', '<br>')|safe }}
                             </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Временные метки -->
+                {% endif %}
+                
+                <!-- Действия -->
                 <div class="row mt-4">
-                    <div class="col-12">
-                        <h5 class="border-bottom pb-2">История</h5>
-                        <div class="row text-muted">
-                            <div class="col-md-6">
-                                <small>Первое обнаружение: {{ equipment.first_discovered.strftime('%d.%m.%Y %H:%M') }}</small>
-                            </div>
-                            <div class="col-md-6">
-                                <small>Последняя активность: {{ equipment.last_seen.strftime('%d.%m.%Y %H:%M') }}</small>
-                            </div>
-                        </div>
+                    <div class="col-12 text-center">
+                        <a href="/equipment" class="btn btn-secondary me-2">
+                            <i class="bi bi-arrow-left"></i> К списку
+                        </a>
+                        <a href="/equipment/{{ equipment.id }}/edit" class="btn btn-warning me-2">
+                            <i class="bi bi-pencil"></i> Редактировать
+                        </a>
+                        <a href="/scan" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Новое сканирование
+                        </a>
                     </div>
-                </div>
-            </div>
-            <div class="card-footer bg-white">
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary" onclick="editEquipment()">
-                        <i class="bi bi-pencil me-1"></i>Редактировать
-                    </button>
-                    <button class="btn btn-outline-secondary" onclick="scanDevice()">
-                        <i class="bi bi-arrow-repeat me-1"></i>Сканировать сейчас
-                    </button>
-                    <a href="/equipment" class="btn btn-outline-secondary ms-auto">
-                        <i class="bi bi-arrow-left me-1"></i>Назад к списку
-                    </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        function editEquipment() {
-            alert('Редактирование оборудования будет реализовано в ближайшее время');
-        }
-
-        function scanDevice() {
-            alert('Запуск сканирования устройства...');
-        }
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

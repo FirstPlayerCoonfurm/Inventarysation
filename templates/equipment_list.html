@@ -31,25 +31,41 @@
     <div class="container mt-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2><i class="bi bi-list-ul me-2"></i>Список оборудования</h2>
-            <a href="/scan" class="btn btn-primary">
-                <i class="bi bi-plus-circle me-1"></i>Сканировать
-            </a>
+            <div>
+                <a href="/equipment/add" class="btn btn-success me-2">
+                    <i class="bi bi-plus-circle me-1"></i>Добавить вручную
+                </a>
+                <a href="/scan" class="btn btn-primary">
+                    <i class="bi bi-search me-1"></i>Сканировать сеть
+                </a>
+            </div>
         </div>
 
         <!-- Поиск и фильтры -->
         <div class="card mb-4">
             <div class="card-body">
                 <form method="GET" class="row g-3">
-                    <div class="col-md-6">
-                        <input type="text" name="search" class="form-control" placeholder="Поиск по имени, IP или инвентарному номеру..." value="{{ search }}">
+                    <div class="col-md-8">
+                        <input type="text" name="search" class="form-control" 
+                               placeholder="Поиск по имени, IP или инвентарному номеру..." 
+                               value="{{ request.args.get('search', '') }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <select class="form-select" name="department">
                             <option value="">Все отделы</option>
-                            <!-- Опции отделов -->
+                            {% set departments = [] %}
+                            {% for item in equipment %}
+                                {% if item.department and item.department not in departments %}
+                                    {% set _ = departments.append(item.department) %}
+                                    <option value="{{ item.department }}" 
+                                            {% if request.args.get('department') == item.department %}selected{% endif %}>
+                                        {{ item.department }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <button type="submit" class="btn btn-outline-primary w-100">
                             <i class="bi bi-search me-1"></i>Найти
                         </button>
@@ -61,7 +77,12 @@
         <!-- Таблица оборудования -->
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Найдено устройств: {{ equipment.total }}</h5>
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-hdd-stack me-2"></i>Найдено устройств: {{ pagination.total if pagination else equipment|length }}
+                    {% if search %}
+                        <small class="text-muted">(по запросу: "{{ search }}")</small>
+                    {% endif %}
+                </h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -73,12 +94,13 @@
                                 <th>MAC-адрес</th>
                                 <th>ОС</th>
                                 <th>Отдел</th>
+                                <th>Статус</th>
                                 <th>Последняя активность</th>
                                 <th>Действия</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for item in equipment.items %}
+                            {% for item in equipment %}
                             <tr>
                                 <td>
                                     <span class="fw-bold">{{ item.ip_address }}</span>
@@ -102,14 +124,37 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if item.last_seen %}
-                                    <small>{{ item.last_seen.strftime('%d.%m.%Y %H:%M') }}</small>
+                                    {% if item.is_active %}
+                                    <span class="badge bg-success">Активно</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивно</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <a href="/equipment/{{ item.id }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
+                                    {% if item.last_seen %}
+                                    <small>{{ item.last_seen.strftime('%d.%m.%Y %H:%M') }}</small>
+                                    {% else %}
+                                    <small class="text-muted">Нет данных</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="/equipment/{{ item.id }}" class="btn btn-outline-primary" 
+                                           title="Просмотр">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="/equipment/{{ item.id }}/edit" class="btn btn-outline-warning"
+                                           title="Редактировать">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox display-6 d-block mb-2"></i>
+                                    Оборудование не найдено
                                 </td>
                             </tr>
                             {% endfor %}
@@ -118,31 +163,40 @@
                 </div>
 
                 <!-- Пагинация -->
-                {% if equipment.pages > 1 %}
-                <nav aria-label="Page navigation">
+                {% if pagination and pagination.pages > 1 %}
+                <nav aria-label="Page navigation" class="mt-4">
                     <ul class="pagination justify-content-center">
-                        {% if equipment.has_prev %}
+                        {% if pagination.has_prev %}
                         <li class="page-item">
-                            <a class="page-link" href="/equipment?page={{ equipment.prev_num }}{% if search %}&search={{ search }}{% endif %}">Назад</a>
+                            <a class="page-link" href="{{ url_for('equipment_list', page=pagination.prev_num, search=search) }}">
+                                <i class="bi bi-chevron-left"></i> Назад
+                            </a>
                         </li>
                         {% endif %}
 
-                        {% for page_num in equipment.iter_pages() %}
+                        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
                             {% if page_num %}
-                                <li class="page-item {% if page_num == equipment.page %}active{% endif %}">
-                                    <a class="page-link" href="/equipment?page={{ page_num }}{% if search %}&search={{ search }}{% endif %}">{{ page_num }}</a>
+                                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                    <a class="page-link" href="{{ url_for('equipment_list', page=page_num, search=search) }}">
+                                        {{ page_num }}
+                                    </a>
                                 </li>
                             {% else %}
                                 <li class="page-item disabled"><span class="page-link">...</span></li>
                             {% endif %}
                         {% endfor %}
 
-                        {% if equipment.has_next %}
+                        {% if pagination.has_next %}
                         <li class="page-item">
-                            <a class="page-link" href="/equipment?page={{ equipment.next_num }}{% if search %}&search={{ search }}{% endif %}">Вперед</a>
+                            <a class="page-link" href="{{ url_for('equipment_list', page=pagination.next_num, search=search) }}">
+                                Вперед <i class="bi bi-chevron-right"></i>
+                            </a>
                         </li>
                         {% endif %}
                     </ul>
+                    <div class="text-center text-muted small mt-2">
+                        Страница {{ pagination.page }} из {{ pagination.pages }}
+                    </div>
                 </nav>
                 {% endif %}
             </div>

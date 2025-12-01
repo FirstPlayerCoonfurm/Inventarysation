@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Добавление оборудования - IT Inventory</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-hdd-stack me-2"></i>IT Inventory
+            </a>
+            <div>
+                <a href="/equipment" class="btn btn-outline-light me-2">
+                    <i class="bi bi-arrow-left"></i> Назад
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <div class="container mt-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-plus-circle me-2"></i>Добавление оборудования
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-dot text-danger"></i> IP-адрес <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" name="ip_address" required 
+                                       placeholder="192.168.1.100" value="{{ request.form.get('ip_address', '') }}">
+                                <small class="form-text text-muted">Обязательное поле</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Имя устройства (hostname)</label>
+                                <input type="text" class="form-control" name="hostname" 
+                                       placeholder="server-01, pc-user-01" value="{{ request.form.get('hostname', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">MAC-адрес</label>
+                                <input type="text" class="form-control" name="mac_address" 
+                                       placeholder="00:11:22:33:44:55" value="{{ request.form.get('mac_address', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">VLAN ID</label>
+                                <input type="number" class="form-control" name="vlan_id" 
+                                       min="1" max="4094" value="{{ request.form.get('vlan_id', '') }}">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Отдел</label>
+                                <input type="text" class="form-control" name="department" 
+                                       placeholder="IT, Бухгалтерия, Отдел продаж" value="{{ request.form.get('department', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Инвентарный номер</label>
+                                <input type="text" class="form-control" name="inventory_number" 
+                                       value="{{ request.form.get('inventory_number', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Серийный номер</label>
+                                <input type="text" class="form-control" name="serial_number" 
+                                       value="{{ request.form.get('serial_number', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Модель</label>
+                                <input type="text" class="form-control" name="model" 
+                                       value="{{ request.form.get('model', '') }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Производитель</label>
+                                <input type="text" class="form-control" name="manufacturer" 
+                                       value="{{ request.form.get('manufacturer', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Операционная система</label>
+                                <input type="text" class="form-control" name="os_name" 
+                                       placeholder="Windows 10, Ubuntu 22.04" value="{{ request.form.get('os_name', '') }}">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Версия ОС</label>
+                                <input type="text" class="form-control" name="os_version" 
+                                       value="{{ request.form.get('os_version', '') }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Расположение</label>
+                                <input type="text" class="form-control" name="location" 
+                                       placeholder="Кабинет 301, Стойка 2" value="{{ request.form.get('location', '') }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Ответственное лицо</label>
+                                <input type="text" class="form-control" name="responsible_person" 
+                                       value="{{ request.form.get('responsible_person', '') }}">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" name="is_active" id="is_active" checked>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="bi bi-check-circle-fill text-success"></i> Активное оборудование
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Описание / Примечания</label>
+                        <textarea class="form-control" name="description" rows="3" 
+                                  placeholder="Дополнительная информация об оборудовании">{{ request.form.get('description', '') }}</textarea>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="/equipment" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-plus-circle"></i> Добавить оборудование
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
