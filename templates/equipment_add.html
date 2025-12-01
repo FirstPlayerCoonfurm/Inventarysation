@@ -52,7 +52,6 @@
                                 </label>
                                 <input type="text" class="form-control" name="ip_address" required 
                                        placeholder="192.168.1.100" value="{{ request.form.get('ip_address', '') }}">
-                                <small class="form-text text-muted">Обязательное поле</small>
                             </div>
                             
                             <div class="mb-3">
@@ -66,15 +65,15 @@
                                 <input type="text" class="form-control" name="mac_address" 
                                        placeholder="00:11:22:33:44:55" value="{{ request.form.get('mac_address', '') }}">
                             </div>
-                            
+                        </div>
+                        
+                        <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">VLAN ID</label>
                                 <input type="number" class="form-control" name="vlan_id" 
                                        min="1" max="4094" value="{{ request.form.get('vlan_id', '') }}">
                             </div>
-                        </div>
-                        
-                        <div class="col-md-6">
+                            
                             <div class="mb-3">
                                 <label class="form-label">Отдел</label>
                                 <input type="text" class="form-control" name="department" 
@@ -86,57 +85,33 @@
                                 <input type="text" class="form-control" name="inventory_number" 
                                        value="{{ request.form.get('inventory_number', '') }}">
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Серийный номер</label>
-                                <input type="text" class="form-control" name="serial_number" 
-                                       value="{{ request.form.get('serial_number', '') }}">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Модель</label>
-                                <input type="text" class="form-control" name="model" 
-                                       value="{{ request.form.get('model', '') }}">
-                            </div>
                         </div>
                     </div>
                     
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Производитель</label>
-                                <input type="text" class="form-control" name="manufacturer" 
-                                       value="{{ request.form.get('manufacturer', '') }}">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Операционная система</label>
-                                <input type="text" class="form-control" name="os_name" 
-                                       placeholder="Windows 10, Ubuntu 22.04" value="{{ request.form.get('os_name', '') }}">
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Версия ОС</label>
-                                <input type="text" class="form-control" name="os_version" 
-                                       value="{{ request.form.get('os_version', '') }}">
-                            </div>
-                            
                             <div class="mb-3">
                                 <label class="form-label">Расположение</label>
                                 <input type="text" class="form-control" name="location" 
                                        placeholder="Кабинет 301, Стойка 2" value="{{ request.form.get('location', '') }}">
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="row">
+                        
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label class="form-label">Ответственное лицо</label>
                                 <input type="text" class="form-control" name="responsible_person" 
                                        value="{{ request.form.get('responsible_person', '') }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Операционная система</label>
+                                <input type="text" class="form-control" name="os_name" 
+                                       placeholder="Windows 10, Ubuntu 22.04" value="{{ request.form.get('os_name', '') }}">
                             </div>
                         </div>
                         
@@ -148,12 +123,6 @@
                                 </label>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Описание / Примечания</label>
-                        <textarea class="form-control" name="description" rows="3" 
-                                  placeholder="Дополнительная информация об оборудовании">{{ request.form.get('description', '') }}</textarea>
                     </div>
                     
                     <hr>

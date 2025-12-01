@@ -49,7 +49,7 @@
                             <div class="mb-3">
                                 <label class="form-label">IP-адрес</label>
                                 <input type="text" class="form-control bg-light" value="{{ equipment.ip_address }}" readonly>
-                                <small class="form-text text-muted">IP-адрес нельзя изменить (определяется при сканировании)</small>
+                                <small class="form-text text-muted">IP-адрес нельзя изменить</small>
                             </div>
                             
                             <div class="mb-3">
@@ -60,39 +60,33 @@
                             <div class="mb-3">
                                 <label class="form-label">MAC-адрес</label>
                                 <input type="text" class="form-control" name="mac_address" value="{{ equipment.mac_address or '' }}" placeholder="00:11:22:33:44:55">
-                                <small class="form-text text-muted">Формат: 00:11:22:33:44:55 или 00-11-22-33-44-55</small>
                             </div>
                             
                             <div class="mb-3">
                                 <label class="form-label">VLAN ID</label>
                                 <input type="number" class="form-control" name="vlan_id" value="{{ equipment.vlan_id or '' }}" min="1" max="4094">
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Отдел</label>
-                                <input type="text" class="form-control" name="department" value="{{ equipment.department or '' }}" placeholder="Например: IT, Бухгалтерия, Отдел продаж">
-                            </div>
                         </div>
                         
                         <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Отдел</label>
+                                <input type="text" class="form-control" name="department" value="{{ equipment.department or '' }}">
+                            </div>
+                            
                             <div class="mb-3">
                                 <label class="form-label">Инвентарный номер</label>
                                 <input type="text" class="form-control" name="inventory_number" value="{{ equipment.inventory_number or '' }}">
                             </div>
                             
                             <div class="mb-3">
-                                <label class="form-label">Серийный номер</label>
-                                <input type="text" class="form-control" name="serial_number" value="{{ equipment.serial_number or '' }}">
+                                <label class="form-label">Расположение</label>
+                                <input type="text" class="form-control" name="location" value="{{ equipment.location or '' }}">
                             </div>
                             
                             <div class="mb-3">
-                                <label class="form-label">Модель</label>
-                                <input type="text" class="form-control" name="model" value="{{ equipment.model or '' }}">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Производитель</label>
-                                <input type="text" class="form-control" name="manufacturer" value="{{ equipment.manufacturer or '' }}">
+                                <label class="form-label">Ответственное лицо</label>
+                                <input type="text" class="form-control" name="responsible_person" value="{{ equipment.responsible_person or '' }}">
                             </div>
                         </div>
                     </div>
@@ -103,36 +97,16 @@
                                 <label class="form-label">Операционная система</label>
                                 <input type="text" class="form-control" name="os_name" value="{{ equipment.os_name or '' }}">
                             </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Версия ОС</label>
-                                <input type="text" class="form-control" name="os_version" value="{{ equipment.os_version or '' }}">
-                            </div>
                         </div>
                         
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Расположение</label>
-                                <input type="text" class="form-control" name="location" value="{{ equipment.location or '' }}" placeholder="Например: Кабинет 301, Стойка 2">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label class="form-label">Ответственное лицо</label>
-                                <input type="text" class="form-control" name="responsible_person" value="{{ equipment.responsible_person or '' }}">
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" name="is_active" id="is_active" {% if equipment.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    <i class="bi bi-check-circle-fill text-success"></i> Активное оборудование
+                                </label>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Описание / Примечания</label>
-                        <textarea class="form-control" name="description" rows="3">{{ equipment.description or '' }}</textarea>
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" name="is_active" id="is_active" {% if equipment.is_active %}checked{% endif %}>
-                        <label class="form-check-label" for="is_active">
-                            <i class="bi bi-check-circle-fill text-success"></i> Активное оборудование
-                        </label>
                     </div>
                     
                     <hr>

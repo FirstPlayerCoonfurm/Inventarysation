@@ -91,18 +91,28 @@
                                 <th>Версия ОС:</th>
                                 <td>{{ equipment.os_version or 'Не указана' }}</td>
                             </tr>
+                            {% if equipment.architecture %}
                             <tr>
-                                <th>Производитель:</th>
-                                <td>{{ equipment.manufacturer or 'Не указан' }}</td>
+                                <th>Архитектура:</th>
+                                <td>{{ equipment.architecture }}</td>
                             </tr>
+                            {% endif %}
+                            {% if equipment.cpu_model %}
                             <tr>
-                                <th>Модель:</th>
-                                <td>{{ equipment.model or 'Не указана' }}</td>
+                                <th>Процессор:</th>
+                                <td>{{ equipment.cpu_model }}
+                                    {% if equipment.cpu_cores %}
+                                    ({{ equipment.cpu_cores }} ядер)
+                                    {% endif %}
+                                </td>
                             </tr>
+                            {% endif %}
+                            {% if equipment.ram_total %}
                             <tr>
-                                <th>Серийный номер:</th>
-                                <td>{{ equipment.serial_number or 'Не указан' }}</td>
+                                <th>Оперативная память:</th>
+                                <td>{{ equipment.ram_total }}</td>
                             </tr>
+                            {% endif %}
                         </table>
                     </div>
                 </div>
@@ -137,6 +147,12 @@
                                 <th>Ответственное лицо:</th>
                                 <td>{{ equipment.responsible_person or 'Не указано' }}</td>
                             </tr>
+                            {% if equipment.warranty_until %}
+                            <tr>
+                                <th>Гарантия до:</th>
+                                <td>{{ equipment.warranty_until.strftime('%d.%m.%Y') }}</td>
+                            </tr>
+                            {% endif %}
                         </table>
                     </div>
                     
@@ -167,31 +183,42 @@
                                     {% endif %}
                                 </td>
                             </tr>
-                            <tr>
-                                <th>Обновлено:</th>
-                                <td>
-                                    {% if equipment.updated_at %}
-                                        {{ equipment.updated_at.strftime('%d.%m.%Y %H:%M') }}
-                                    {% else %}
-                                        <span class="text-muted">Нет данных</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
                         </table>
                     </div>
                 </div>
                 
-                <!-- Описание -->
-                {% if equipment.description %}
+                <!-- Дополнительная информация -->
+                {% if equipment.storage_info or equipment.gpu_info %}
                 <div class="row mt-4">
                     <div class="col-12">
                         <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-card-text me-2"></i>Описание / Примечания
+                            <i class="bi bi-hdd me-2"></i>Дополнительная информация
                         </h5>
-                        <div class="card">
-                            <div class="card-body">
-                                {{ equipment.description|replace('\n', '<br>')|safe }}
+                        <div class="row">
+                            {% if equipment.storage_info %}
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Хранилище</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <pre class="mb-0">{{ equipment.storage_info }}</pre>
+                                    </div>
+                                </div>
                             </div>
+                            {% endif %}
+                            {% if equipment.gpu_info %}
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Графика</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <pre class="mb-0">{{ equipment.gpu_info }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
