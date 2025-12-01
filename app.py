@@ -14,11 +14,6 @@ app.secret_key = Config.SECRET_KEY
 # Инициализация базы данных
 db.init_app(app)
 
-# Импортируем NetworkScanner локально, чтобы избежать циклических импортов
-def import_scanner():
-    from scanner import NetworkScanner
-    return NetworkScanner
-
 def wait_for_database():
     """Ожидает доступность базы данных"""
     print("🔍 Проверка подключения к базе данных...")
@@ -45,14 +40,20 @@ def validate_subnet_input(subnet):
         # Проверяем, является ли это валидным IP
         try:
             ipaddress.ip_address(subnet)
-            subnet = f"{subnet}/24"
-            return subnet, f"Автоматически добавлена маска /24. Сканируется: {subnet}"
+            # Если это конкретный IP, сканируем только его
+            subnet = f"{subnet}/32"
+            return subnet, f"Сканируется один IP: {subnet}"
         except ValueError:
             return None, f"Некорректный IP-адрес: {subnet}"
     
     # Проверяем корректность подсети CIDR
     try:
         network = ipaddress.ip_network(subnet, strict=False)
+        
+        # Ограничиваем размер сканируемой подсети
+        if network.num_addresses > 256:
+            flash(f"Подсеть слишком большая. Сканируем только первые 256 адресов из {subnet}", "warning")
+        
         return subnet, None
     except ValueError as e:
         return None, f"Некорректная подсеть: {e}"
@@ -68,13 +69,10 @@ def index():
         
     except Exception as e:
         print(f"Ошибка базы данных: {e}")
-        # Если есть ошибка, используем тестовые данные
         total_devices = 0
         active_devices = 0
         recent_scans = []
         recent_equipment = []
-        
-        # Показываем сообщение об ошибке
         flash(f'Ошибка подключения к базе данных: {e}', 'error')
 
     return render_template('index.html',
@@ -88,7 +86,6 @@ def equipment_list():
     """Список всего оборудования"""
     try:
         search = request.args.get('search', '')
-        
         query = Equipment.query
         
         if search:
@@ -98,7 +95,6 @@ def equipment_list():
                 (Equipment.inventory_number.contains(search))
             )
         
-        # Убираем пагинацию - получаем все результаты
         equipment = query.order_by(Equipment.last_seen.desc()).all()
         
     except Exception as e:
@@ -149,12 +145,55 @@ def scan_network():
                 return redirect(url_for('scan_network'))
         
         try:
-            # Запускаем реальное сканирование
-            NetworkScanner = import_scanner()
+            # Импортируем сканер
+            try:
+                from scanner import NetworkScanner
+            except ImportError:
+                flash('Модуль сканирования не найден', 'error')
+                return redirect(url_for('scan_network'))
+            
+            # Создаем сканер с ограничением
             scanner = NetworkScanner()
             
             print(f"🔄 Запуск сканирования подсети: {subnet}, VLAN: {vlan_id}")
-            scan_results = scanner.scan_subnet(subnet, vlan_id, max_threads=50)
+            
+            # Ограничиваем время сканирования
+            import threading
+            from queue import Queue
+            
+            result_queue = Queue()
+            
+            def run_scan():
+                try:
+                    scan_results = scanner.scan_subnet(subnet, vlan_id, max_threads=10, timeout=1)
+                    result_queue.put(('success', scan_results))
+                except Exception as e:
+                    result_queue.put(('error', str(e)))
+            
+            # Запускаем в отдельном потоке с таймаутом
+            scan_thread = threading.Thread(target=run_scan)
+            scan_thread.daemon = True
+            scan_thread.start()
+            
+            # Ждем максимум 30 секунд
+            scan_thread.join(timeout=30)
+            
+            if scan_thread.is_alive():
+                flash('Сканирование прервано по таймауту (30 секунд)', 'warning')
+                return redirect(url_for('scan_network'))
+            
+            # Получаем результаты
+            if result_queue.empty():
+                flash('Сканирование не вернуло результатов', 'error')
+                return redirect(url_for('scan_network'))
+            
+            status, result = result_queue.get()
+            
+            if status == 'error':
+                flash(f'Ошибка сканирования: {result}', 'error')
+                return redirect(url_for('scan_network'))
+            
+            scan_results = result
             
             # Сохраняем запись о сканировании
             scan_record = ScanHistory(
@@ -176,7 +215,11 @@ def scan_network():
                 'scan_id': scan_record.id
             }
             
-            flash(f'✅ Найдено {len(scan_results)} устройств в подсети {subnet}', 'success')
+            if len(scan_results) > 0:
+                flash(f'✅ Найдено {len(scan_results)} устройств в подсети {subnet}', 'success')
+            else:
+                flash(f'ℹ️ Устройства в подсети {subnet} не найдены', 'info')
+            
             return redirect(url_for('scan_results'))
             
         except Exception as e:
@@ -205,30 +248,49 @@ def scan_results():
                          timestamp=scan_data['timestamp'],
                          scan_record=scan_record)
 
-@app.route('/scan/clear')
-def clear_scan_results():
-    """Очистка результатов сканирования"""
-    session.pop('scan_results', None)
-    flash('Результаты сканирования очищены', 'info')
-    return redirect(url_for('scan_network'))
+@app.route('/scan/quick', methods=['GET', 'POST'])
+def quick_scan():
+    """Быстрое сканирование (только несколько адресов)"""
+    if request.method == 'POST':
+        # Определяем локальную сеть автоматически
+        import netifaces
+        
+        try:
+            # Получаем IP текущего интерфейса
+            gateways = netifaces.gateways()
+            default_gateway = gateways['default'][netifaces.AF_INET]
+            current_ip = socket.gethostbyname(socket.gethostname())
+            
+            # Создаем подсеть /24 на основе текущего IP
+            parts = current_ip.split('.')
+            subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+            
+            flash(f'Автоматически определена подсеть: {subnet}', 'info')
+            
+            # Перенаправляем на обычное сканирование
+            session['preset_subnet'] = subnet
+            return redirect(url_for('scan_network'))
+            
+        except Exception as e:
+            flash(f'Не удалось определить локальную сеть: {str(e)}', 'error')
+            return redirect(url_for('scan_network'))
+    
+    return render_template('quick_scan.html')
 
 @app.route('/reports')
 def reports():
     """Страница с отчетами"""
     try:
-        # Статистика по отделам
         dept_stats = db.session.query(
             Equipment.department,
             db.func.count(Equipment.id)
         ).group_by(Equipment.department).all()
         
-        # Статистика по ОС
         os_stats = db.session.query(
             Equipment.os_name,
             db.func.count(Equipment.id)
         ).group_by(Equipment.os_name).all()
         
-        # Статистика по VLAN
         vlan_stats = db.session.query(
             Equipment.vlan_id,
             db.func.count(Equipment.id)
@@ -245,135 +307,31 @@ def reports():
                          os_stats=os_stats,
                          vlan_stats=vlan_stats)
 
-@app.route('/api/equipment')
-def api_equipment():
-    """API endpoint для данных оборудования"""
-    try:
-        equipment = Equipment.query.all()
-        return jsonify([{
-            'id': eq.id,
-            'ip_address': eq.ip_address,
-            'hostname': eq.hostname,
-            'mac_address': eq.mac_address,
-            'os_name': eq.os_name,
-            'vlan_id': eq.vlan_id,
-            'last_seen': eq.last_seen.isoformat() if eq.last_seen else None,
-            'is_active': eq.is_active
-        } for eq in equipment])
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/scan/quick', methods=['POST'])
-def api_quick_scan():
-    """Быстрое сканирование через API"""
-    try:
-        data = request.get_json()
-        subnet = data.get('subnet', '').strip()
-        vlan_id = data.get('vlan_id')
-        
-        if not subnet:
-            return jsonify({'error': 'Не указана подсеть'}), 400
-        
-        # Валидация подсети
-        subnet, error = validate_subnet_input(subnet)
-        if error:
-            return jsonify({'error': error}), 400
-        
-        # Конвертируем VLAN ID
-        vlan_id_int = None
-        if vlan_id:
-            try:
-                vlan_id_int = int(vlan_id)
-                if not (1 <= vlan_id_int <= 4094):
-                    return jsonify({'error': 'VLAN ID должен быть в диапазоне 1-4094'}), 400
-            except ValueError:
-                return jsonify({'error': 'VLAN ID должен быть числом'}), 400
-        
-        # Запускаем сканирование
-        NetworkScanner = import_scanner()
-        scanner = NetworkScanner()
-        results = scanner.scan_subnet(subnet, vlan_id_int, max_threads=20)
-        
-        return jsonify({
-            'success': True,
-            'subnet': subnet,
-            'vlan_id': vlan_id_int,
-            'devices_found': len(results),
-            'devices': results[:10]  # Возвращаем только первые 10 устройств
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/equipment/<int:equipment_id>', methods=['PUT'])
-def api_update_equipment(equipment_id):
-    """Обновление информации об оборудовании через API"""
-    try:
-        equipment = Equipment.query.get_or_404(equipment_id)
-        data = request.get_json()
-        
-        # Обновляем разрешенные поля
-        updatable_fields = ['inventory_number', 'location', 'department', 
-                           'responsible_person', 'notes']
-        
-        for field in updatable_fields:
-            if field in data:
-                setattr(equipment, field, data[field])
-        
-        equipment.last_seen = datetime.utcnow()
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Оборудование обновлено',
-            'equipment': {
-                'id': equipment.id,
-                'ip_address': equipment.ip_address,
-                'hostname': equipment.hostname
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/check-db')
-def check_database():
-    """Проверка подключения к базе данных"""
-    try:
-        device_count = Equipment.query.count()
-        scan_count = ScanHistory.query.count()
-        return f'''
-        <h1>✅ Подключение к базе данных успешно!</h1>
-        <div class="alert alert-success">
-            <p><strong>Устройств в базе:</strong> {device_count}</p>
-            <p><strong>Записей сканирования:</strong> {scan_count}</p>
-            <p><strong>Последнее сканирование:</strong> {ScanHistory.query.order_by(ScanHistory.scan_date.desc()).first().scan_date if scan_count > 0 else 'Нет данных'}</p>
-        </div>
-        <a href="/" class="btn btn-primary">На главную</a>
-        '''
-    except Exception as e:
-        return f'''
-        <h1>❌ Ошибка подключения к базе данных!</h1>
-        <div class="alert alert-danger">
-            <p><strong>Ошибка:</strong> {e}</p>
-        </div>
-        <a href="/" class="btn btn-primary">На главную</a>
-        '''
+@app.route('/api/scan/status')
+def scan_status():
+    """API для проверки статуса сканирования"""
+    scan_data = session.get('scan_results')
+    if not scan_data:
+        return jsonify({'status': 'no_scan'})
+    
+    return jsonify({
+        'status': 'complete',
+        'subnet': scan_data['subnet'],
+        'devices_found': len(scan_data['results']),
+        'timestamp': scan_data['timestamp']
+    })
 
 @app.route('/system/health')
 def system_health():
     """Проверка здоровья системы"""
     try:
-        # Проверяем подключение к БД
         db_status = Config.check_database_connection()
         
-        # Получаем статистику
         stats = {
             'database': 'healthy' if db_status else 'unhealthy',
             'equipment_count': Equipment.query.count(),
             'active_equipment': Equipment.query.filter_by(is_active=True).count(),
             'scans_count': ScanHistory.query.count(),
-            'uptime': time.time() - app_start_time if 'app_start_time' in globals() else 0
         }
         
         return jsonify({
@@ -391,21 +349,13 @@ def system_health():
 
 @app.errorhandler(404)
 def page_not_found(e):
-    """Обработчик ошибки 404"""
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    """Обработчик ошибки 500"""
     return render_template('500.html'), 500
 
-# Инициализация при запуске
 if __name__ == '__main__':
-    # Сохраняем время старта для health check
-    global app_start_time
-    app_start_time = time.time()
-    
-    # Ожидаем доступность базы данных перед запуском
     if not wait_for_database():
         print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")
     

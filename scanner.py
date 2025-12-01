@@ -2,15 +2,17 @@ import subprocess
 import socket
 import platform
 import ipaddress
-import psutil
 from datetime import datetime
-import random
-from models import db, Equipment
+import threading
 import concurrent.futures
+import time
+from models import db, Equipment
 
 class NetworkScanner:
     def __init__(self):
-        self.results = []
+        self.scanning = False
+        self.progress = 0
+        self.found_devices = []
     
     def validate_subnet(self, subnet):
         """Проверяет корректность подсети"""
@@ -20,123 +22,204 @@ class NetworkScanner:
         except ValueError as e:
             raise ValueError(f"Некорректная подсеть: {e}")
     
-    def ping_host(self, ip):
-        """Пинг конкретного IP"""
+    def ping_host(self, ip, timeout=1):
+        """Улучшенный ping с обработкой ошибок"""
         try:
-            param = '-n' if platform.system().lower() == 'windows' else '-c'
+            # Для Linux/macOS
+            if platform.system().lower() != 'windows':
+                cmd = ['ping', '-c', '1', '-W', str(timeout), str(ip)]
+            else:
+                cmd = ['ping', '-n', '1', '-w', str(timeout * 1000), str(ip)]
+            
             result = subprocess.run(
-                ['ping', param, '1', '-w', '500', str(ip)],
+                cmd,
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=timeout + 1
             )
-            return result.returncode == 0
-        except:
+            
+            # Проверяем успешный ping
+            if platform.system().lower() != 'windows':
+                return result.returncode == 0 and "1 received" in result.stdout
+            else:
+                return result.returncode == 0 and "TTL=" in result.stdout
+                
+        except (subprocess.TimeoutExpired, Exception):
             return False
     
-    def get_host_info(self, ip):
-        """Получает информацию об устройстве"""
+    def get_mac_address(self, ip):
+        """Получает реальный MAC-адрес через ARP"""
         try:
-            # Пытаемся получить имя хоста
-            try:
-                hostname = socket.gethostbyaddr(str(ip))[0]
-            except:
-                hostname = "Неизвестно"
+            # Для Linux
+            if platform.system().lower() == 'linux':
+                # Попробуем получить из ARP таблицы
+                result = subprocess.run(
+                    ['arp', '-n', str(ip)],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if result.returncode == 0 and result.stdout:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if str(ip) in line:
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                mac = parts[2]
+                                if ':' in mac or '-' in mac:
+                                    return mac.replace('-', ':')
             
-            # Получаем MAC-адрес
-            mac_address = self._get_mac_address(str(ip))
+            # Для Windows
+            elif platform.system().lower() == 'windows':
+                result = subprocess.run(
+                    ['arp', '-a', str(ip)],
+                    capture_output=True,
+                    text=True,
+                    encoding='cp866'
+                )
+                
+                if result.returncode == 0 and result.stdout:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if str(ip) in line:
+                            parts = line.split()
+                            for part in parts:
+                                if ':' in part or '-' in part:
+                                    return part.replace('-', ':')
             
-            # Определяем ОС
-            os_type = self._detect_os(str(ip))
+            # Если не нашли, возвращаем неизвестно
+            return "Неизвестно"
             
-            return {
-                'ip_address': str(ip),
-                'hostname': hostname,
-                'mac_address': mac_address,
-                'os_name': os_type,
-                'status': 'online',
-                'last_seen': datetime.utcnow()
-            }
-        except Exception as e:
-            print(f"Ошибка при получении информации о {ip}: {e}")
-            return None
+        except Exception:
+            return "Неизвестно"
     
-    def _get_mac_address(self, ip):
-        """Получает MAC-адрес (упрощенная версия)"""
-        # В реальном приложении здесь будет ARP-запрос
-        # Генерируем случайный MAC для демонстрации
-        return ':'.join(['%02x' % random.randint(0, 255) for _ in range(6)])
+    def get_hostname(self, ip):
+        """Получает имя хоста"""
+        try:
+            hostname = socket.getfqdn(ip)
+            if hostname == ip:
+                return "Неизвестно"
+            return hostname
+        except:
+            return "Неизвестно"
     
-    def _detect_os(self, ip):
-        """Определяет ОС по открытым портам"""
+    def detect_os(self, ip):
+        """Определяет ОС по характерным признакам"""
+        # Упрощенная детекция - проверяем только несколько портов
         ports_to_check = [
-            (22, "Linux/Unix"),
-            (23, "Network Device"),
-            (80, "Web Server"),
-            (135, "Windows"),
-            (139, "Windows"),
-            (445, "Windows"),
-            (3389, "Windows")
+            (22, "Linux/Unix (SSH)"),
+            (3389, "Windows (RDP)"),
+            (445, "Windows (SMB)"),
+            (80, "Веб-сервер"),
+            (443, "Веб-сервер (HTTPS)")
         ]
         
-        try:
-            for port, os_name in ports_to_check:
+        for port, os_name in ports_to_check:
+            try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.5)
-                result = sock.connect_ex((ip, port))
+                sock.settimeout(1)
+                result = sock.connect_ex((str(ip), port))
                 sock.close()
                 
                 if result == 0:
                     return os_name
-        except:
-            pass
+            except:
+                continue
         
         return "Неизвестно"
     
-    def scan_subnet(self, subnet, vlan_id=None, max_threads=50):
-        """Сканирует подсеть"""
+    def scan_single_host(self, ip, vlan_id=None):
+        """Сканирует один хост"""
+        try:
+            # Проверяем доступность
+            if not self.ping_host(ip, timeout=1):
+                return None
+            
+            # Получаем информацию
+            hostname = self.get_hostname(ip)
+            mac_address = self.get_mac_address(ip)
+            os_name = self.detect_os(ip)
+            
+            device_info = {
+                'ip_address': str(ip),
+                'hostname': hostname,
+                'mac_address': mac_address,
+                'os_name': os_name,
+                'status': 'online',
+                'last_seen': datetime.utcnow(),
+                'vlan_id': vlan_id
+            }
+            
+            print(f"✅ Найден: {ip} ({hostname}) - {os_name}")
+            return device_info
+            
+        except Exception as e:
+            print(f"❌ Ошибка сканирования {ip}: {e}")
+            return None
+    
+    def scan_subnet(self, subnet, vlan_id=None, max_threads=10, timeout=2):
+        """Сканирует подсеть с ограничениями"""
+        self.scanning = True
+        self.found_devices = []
+        
         try:
             network = self.validate_subnet(subnet)
         except ValueError as e:
             raise ValueError(e)
         
-        print(f"🔍 Сканирование подсети: {subnet}, VLAN: {vlan_id}")
-        print(f"📡 Проверка {network.num_addresses - 2} хостов...")
+        print(f"🔍 Начинаем сканирование подсети: {subnet}")
+        print(f"📡 Всего адресов: {network.num_addresses}")
         
-        # Получаем все IP в подсети
+        # Ограничиваем количество сканируемых адресов
         hosts = list(network.hosts())
+        max_hosts = 256  # Максимум 256 адресов
+        if len(hosts) > max_hosts:
+            hosts = hosts[:max_hosts]
+            print(f"⚠️  Ограничение: сканируем только первые {max_hosts} адресов")
         
-        # Ограничиваем количество хостов для больших сетей
-        if len(hosts) > 1000:
-            hosts = hosts[:1000]  # Сканируем только первые 1000 хостов
-            print(f"⚠️  Большая подсеть, сканируем только первые 1000 хостов")
+        total_hosts = len(hosts)
+        print(f"🔢 Будет сканироваться: {total_hosts} хостов")
         
-        # Многопоточное сканирование
+        # Многопоточное сканирование с прогрессом
         found_devices = []
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
-            future_to_ip = {executor.submit(self.ping_host, ip): ip for ip in hosts}
+            # Запускаем задачи
+            future_to_ip = {executor.submit(self.scan_single_host, ip, vlan_id): ip for ip in hosts}
             
+            completed = 0
             for future in concurrent.futures.as_completed(future_to_ip):
+                completed += 1
                 ip = future_to_ip[future]
-                if future.result():  # Если хост доступен
-                    device_info = self.get_host_info(ip)
+                
+                # Обновляем прогресс каждые 10 хостов
+                if completed % 10 == 0 or completed == total_hosts:
+                    print(f"📊 Прогресс: {completed}/{total_hosts} ({completed/total_hosts*100:.1f}%)")
+                
+                try:
+                    device_info = future.result(timeout=timeout)
                     if device_info:
                         found_devices.append(device_info)
-                        print(f"✅ Найден: {device_info['ip_address']} ({device_info['hostname']})")
+                except Exception as e:
+                    print(f"⚠️  Ошибка при сканировании {ip}: {e}")
         
-        # Сохраняем результаты в базу
-        self._save_to_database(found_devices, vlan_id)
+        # Сохраняем в базу
+        saved_count = self.save_to_database(found_devices, vlan_id)
         
-        print(f"🎯 Сканирование завершено. Найдено: {len(found_devices)} устройств")
+        print(f"🎯 Сканирование завершено!")
+        print(f"✅ Найдено устройств: {len(found_devices)}")
+        print(f"💾 Сохранено в базу: {saved_count}")
+        
+        self.scanning = False
         return found_devices
     
-    def _save_to_database(self, devices, vlan_id=None):
-        """Сохраняет найденные устройства в базу"""
+    def save_to_database(self, devices, vlan_id=None):
+        """Сохраняет устройства в базу данных"""
         saved_count = 0
         
         for device in devices:
             try:
-                # Проверяем, существует ли уже устройство
+                # Ищем существующее устройство
                 existing = Equipment.query.filter_by(ip_address=device['ip_address']).first()
                 
                 if existing:
@@ -150,26 +233,54 @@ class NetworkScanner:
                         existing.vlan_id = vlan_id
                 else:
                     # Создаем новое
-                    new_equipment = Equipment(
+                    new_eq = Equipment(
                         ip_address=device['ip_address'],
                         hostname=device['hostname'],
                         mac_address=device['mac_address'],
                         os_name=device['os_name'],
                         vlan_id=vlan_id,
                         last_seen=device['last_seen'],
-                        is_active=True
+                        is_active=True,
+                        first_discovered=datetime.utcnow()
                     )
-                    db.session.add(new_equipment)
+                    db.session.add(new_eq)
                 
                 saved_count += 1
                 
             except Exception as e:
-                print(f"❌ Ошибка сохранения устройства {device['ip_address']}: {e}")
+                print(f"❌ Ошибка сохранения {device['ip_address']}: {e}")
                 db.session.rollback()
         
         try:
             db.session.commit()
-            print(f"💾 Сохранено {saved_count} устройств в базу данных")
+            return saved_count
         except Exception as e:
-            print(f"❌ Ошибка коммита в базу данных: {e}")
+            print(f"❌ Ошибка коммита в базу: {e}")
             db.session.rollback()
+            return 0
+    
+    def quick_scan(self, subnet, vlan_id=None):
+        """Быстрое сканирование - проверяет только ключевые адреса"""
+        try:
+            network = self.validate_subnet(subnet)
+        except ValueError as e:
+            raise ValueError(e)
+        
+        # Проверяем только определенные адреса
+        common_addresses = [
+            network.network_address + 1,  # Обычно шлюз
+            network.network_address + 2,
+            network.network_address + 10,
+            network.network_address + 50,
+            network.network_address + 100,
+            network.broadcast_address - 1  # Последний адрес
+        ]
+        
+        found_devices = []
+        for ip in common_addresses:
+            if ip in network:
+                device = self.scan_single_host(ip, vlan_id)
+                if device:
+                    found_devices.append(device)
+        
+        return found_devices
