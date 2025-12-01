@@ -7,6 +7,7 @@ import threading
 import concurrent.futures
 import time
 from models import db, Equipment
+import netifaces
 
 class NetworkScanner:
     def __init__(self):
@@ -157,7 +158,7 @@ class NetworkScanner:
             print(f"❌ Ошибка сканирования {ip}: {e}")
             return None
     
-    def scan_subnet(self, subnet, vlan_id=None, max_threads=10, timeout=2):
+    def scan_subnet(self, subnet, vlan_id=None, max_threads=50, timeout=2):
         """Сканирует подсеть с ограничениями"""
         self.scanning = True
         self.found_devices = []
@@ -170,14 +171,15 @@ class NetworkScanner:
         print(f"🔍 Начинаем сканирование подсети: {subnet}")
         print(f"📡 Всего адресов: {network.num_addresses}")
         
-        # Ограничиваем количество сканируемых адресов
+        # УБИРАЕМ ОГРАНИЧЕНИЕ на 256 адресов
         hosts = list(network.hosts())
-        max_hosts = 256  # Максимум 256 адресов
-        if len(hosts) > max_hosts:
-            hosts = hosts[:max_hosts]
-            print(f"⚠️  Ограничение: сканируем только первые {max_hosts} адресов")
         
         total_hosts = len(hosts)
+        
+        # Для очень больших подсетей предупреждаем пользователя
+        if total_hosts > 1000:
+            print(f"⚠️  Большая подсеть: {total_hosts} хостов. Сканирование может занять время.")
+        
         print(f"🔢 Будет сканироваться: {total_hosts} хостов")
         
         # Многопоточное сканирование с прогрессом
@@ -192,16 +194,19 @@ class NetworkScanner:
                 completed += 1
                 ip = future_to_ip[future]
                 
-                # Обновляем прогресс каждые 10 хостов
-                if completed % 10 == 0 or completed == total_hosts:
-                    print(f"📊 Прогресс: {completed}/{total_hosts} ({completed/total_hosts*100:.1f}%)")
+                # Обновляем прогресс каждые 10 хостов или 1% от общего числа
+                update_interval = max(10, total_hosts // 100)
+                if completed % update_interval == 0 or completed == total_hosts:
+                    progress_percent = (completed / total_hosts) * 100
+                    print(f"📊 Прогресс: {completed}/{total_hosts} ({progress_percent:.1f}%)")
                 
                 try:
                     device_info = future.result(timeout=timeout)
                     if device_info:
                         found_devices.append(device_info)
                 except Exception as e:
-                    print(f"⚠️  Ошибка при сканировании {ip}: {e}")
+                    if completed % 100 == 0:  # Логируем ошибки каждые 100 хостов
+                        print(f"⚠️  Ошибка при сканировании {ip}: {e}")
         
         # Сохраняем в базу
         saved_count = self.save_to_database(found_devices, vlan_id)
@@ -211,6 +216,7 @@ class NetworkScanner:
         print(f"💾 Сохранено в базу: {saved_count}")
         
         self.scanning = False
+        self.found_devices = found_devices
         return found_devices
     
     def save_to_database(self, devices, vlan_id=None):
@@ -276,6 +282,15 @@ class NetworkScanner:
             network.broadcast_address - 1  # Последний адрес
         ]
         
+        # Добавляем адреса кратные 10 в пределах первых 256 адресов
+        for i in range(10, 256, 10):
+            addr = network.network_address + i
+            if addr in network:
+                common_addresses.append(addr)
+        
+        # Убираем дубликаты
+        common_addresses = list(set(common_addresses))
+        
         found_devices = []
         for ip in common_addresses:
             if ip in network:
@@ -284,3 +299,40 @@ class NetworkScanner:
                     found_devices.append(device)
         
         return found_devices
+    
+    def check_network_connectivity(self):
+        """Проверяет доступность сети"""
+        try:
+            # Получаем шлюз по умолчанию
+            gateways = netifaces.gateways()
+            
+            if 'default' in gateways and netifaces.AF_INET in gateways['default']:
+                gateway_ip = gateways['default'][netifaces.AF_INET][0]
+                
+                print(f"🔍 Проверяем доступность шлюза: {gateway_ip}")
+                
+                if self.ping_host(gateway_ip, timeout=3):
+                    return {
+                        'success': True,
+                        'gateway': gateway_ip,
+                        'message': f'Шлюз {gateway_ip} доступен'
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'gateway': gateway_ip,
+                        'message': f'Шлюз {gateway_ip} недоступен'
+                    }
+            else:
+                return {
+                    'success': False,
+                    'gateway': None,
+                    'message': 'Шлюз по умолчанию не найден'
+                }
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'gateway': None,
+                'message': f'Ошибка проверки сети: {str(e)}'
+            }

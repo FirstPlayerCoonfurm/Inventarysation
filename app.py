@@ -29,31 +29,6 @@ def wait_for_database():
     print("❌ Не удалось подключиться к базе данных")
     return False
 
-def migrate_database():
-    """Выполняет миграции базы данных"""
-    try:
-        with app.app_context():
-            # Проверяем, существует ли таблица scan_history
-            from sqlalchemy import inspect
-            inspector = inspect(db.engine)
-            
-            if 'scan_history' in inspector.get_table_names():
-                # Получаем список колонок в таблице scan_history
-                columns = [col['name'] for col in inspector.get_columns('scan_history')]
-                
-                # Если колонки vlan_id нет, добавляем её
-                if 'vlan_id' not in columns:
-                    print("🔧 Выполняем миграцию: добавляем vlan_id в scan_history...")
-                    db.engine.execute('ALTER TABLE scan_history ADD COLUMN vlan_id INTEGER;')
-                    print("✅ Миграция выполнена успешно")
-                else:
-                    print("✅ Структура базы данных актуальна")
-            else:
-                print("⚠️  Таблица scan_history не существует")
-                
-    except Exception as e:
-        print(f"❌ Ошибка при миграции базы данных: {e}")
-
 def validate_subnet_input(subnet):
     """Проверяет и форматирует введенную подсеть"""
     if not subnet:
@@ -73,8 +48,9 @@ def validate_subnet_input(subnet):
     try:
         network = ipaddress.ip_network(subnet, strict=False)
         
-        if network.num_addresses > 256:
-            flash(f"Подсеть слишком большая. Сканируем только первые 256 адресов из {subnet}", "warning")
+        # УБИРАЕМ ограничение на размер подсети, только предупреждение
+        if network.num_addresses > 1000:
+            return subnet, f"Большая подсеть: {network.num_addresses} адресов. Сканирование может занять время."
         
         return subnet, None
     except ValueError as e:
@@ -303,38 +279,69 @@ def equipment_add():
 @app.route('/scan', methods=['GET', 'POST'])
 def scan_network():
     """Страница сканирования сети"""
+    # Получаем историю сканирований для отображения
+    try:
+        scan_history = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(10).all()
+    except Exception as e:
+        scan_history = []
+        print(f"⚠️  Не удалось загрузить историю сканирований: {e}")
+    
     if request.method == 'POST':
         subnet_input = request.form.get('subnet', '').strip()
         vlan_id_input = request.form.get('vlan_id', '').strip()
+        max_threads = request.form.get('max_threads', 50, type=int)
+        timeout = request.form.get('timeout', 2, type=int)
         
+        # Валидация параметров
+        if max_threads < 1 or max_threads > 100:
+            max_threads = 50
+        if timeout < 1 or timeout > 10:
+            timeout = 2
+        
+        # Валидация подсети
         subnet, subnet_message = validate_subnet_input(subnet_input)
         if subnet is None:
             flash(subnet_message, 'error')
-            return redirect(url_for('scan_network'))
+            return render_template('scan.html', scan_history=scan_history)
         
         if subnet_message:
             flash(subnet_message, 'info')
         
+        # Валидация VLAN ID
         vlan_id = None
         if vlan_id_input:
             try:
                 vlan_id = int(vlan_id_input)
                 if not (1 <= vlan_id <= 4094):
                     flash('Ошибка: VLAN ID должен быть в диапазоне 1-4094', 'error')
-                    return redirect(url_for('scan_network'))
+                    return render_template('scan.html', scan_history=scan_history)
             except ValueError:
                 flash('Ошибка: VLAN ID должен быть числом', 'error')
-                return redirect(url_for('scan_network'))
+                return render_template('scan.html', scan_history=scan_history)
         
         try:
             from scanner import NetworkScanner
-        except ImportError:
-            flash('Модуль сканирования не найден', 'error')
-            return redirect(url_for('scan_network'))
+        except ImportError as e:
+            flash(f'Модуль сканирования не найден: {e}', 'error')
+            return render_template('scan.html', scan_history=scan_history)
         
         scanner = NetworkScanner()
         
         print(f"🔄 Запуск сканирования подсети: {subnet}, VLAN: {vlan_id}")
+        print(f"⚙️  Параметры: потоки={max_threads}, таймаут={timeout}с")
+        
+        # Рассчитываем ожидаемое время
+        try:
+            network = ipaddress.ip_network(subnet, strict=False)
+            num_addresses = network.num_addresses
+            estimated_time = max(30, (num_addresses / 100) * timeout)
+            
+            if num_addresses > 1000:
+                flash(f'⚠️  Большая подсеть: {num_addresses} адресов. Сканирование может занять до {estimated_time:.0f} секунд', 'warning')
+            
+            print(f"⏱️  Ожидаемое время: {estimated_time:.0f} секунд для {num_addresses} адресов")
+        except:
+            estimated_time = 120
         
         import threading
         from queue import Queue
@@ -343,49 +350,61 @@ def scan_network():
         
         def run_scan():
             try:
-                scan_results = scanner.scan_subnet(subnet, vlan_id, max_threads=10, timeout=1)
+                scan_results = scanner.scan_subnet(subnet, vlan_id, max_threads=max_threads, timeout=timeout)
                 result_queue.put(('success', scan_results))
             except Exception as e:
                 result_queue.put(('error', str(e)))
         
+        # Запускаем в отдельном потоке
         scan_thread = threading.Thread(target=run_scan)
         scan_thread.daemon = True
         scan_thread.start()
         
-        scan_thread.join(timeout=30)
+        # Ждем завершения с динамическим таймаутом
+        scan_thread.join(timeout=estimated_time)
         
         if scan_thread.is_alive():
-            flash('Сканирование прервано по таймауту (30 секунд)', 'warning')
-            return redirect(url_for('scan_network'))
+            flash(f'Сканирование прервано по таймауту ({estimated_time:.0f} секунд). Подсеть слишком большая.', 'warning')
+            return render_template('scan.html', scan_history=scan_history)
         
+        # Получаем результаты
         if result_queue.empty():
             flash('Сканирование не вернуло результатов', 'error')
-            return redirect(url_for('scan_network'))
+            return render_template('scan.html', scan_history=scan_history)
         
         status, result = result_queue.get()
         
         if status == 'error':
             flash(f'Ошибка сканирования: {result}', 'error')
-            return redirect(url_for('scan_network'))
+            return render_template('scan.html', scan_history=scan_history)
         
         scan_results = result
         
-        scan_record = ScanHistory(
-            subnet_scanned=subnet,
-            devices_found=len(scan_results),
-            scan_type='manual',
-            initiated_by='Администратор',
-            vlan_id=vlan_id
-        )
-        db.session.add(scan_record)
-        db.session.commit()
+        # Сохраняем запись о сканировании
+        try:
+            scan_record = ScanHistory(
+                subnet_scanned=subnet,
+                devices_found=len(scan_results),
+                scan_type='manual',
+                initiated_by='Администратор',
+                vlan_id=vlan_id
+            )
+            db.session.add(scan_record)
+            db.session.commit()
+            
+            # Обновляем историю
+            scan_history = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(10).all()
+            
+        except Exception as e:
+            print(f"❌ Ошибка сохранения истории сканирования: {e}")
         
+        # Сохраняем результаты в сессии
         session['scan_results'] = {
             'subnet': subnet,
             'vlan_id': vlan_id,
             'results': scan_results,
             'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-            'scan_id': scan_record.id
+            'scan_id': scan_record.id if 'scan_record' in locals() else None
         }
         
         if len(scan_results) > 0:
@@ -395,7 +414,7 @@ def scan_network():
         
         return redirect(url_for('scan_results'))
     
-    return render_template('scan.html')
+    return render_template('scan.html', scan_history=scan_history)
 
 @app.route('/scan/results')
 def scan_results():
@@ -406,8 +425,11 @@ def scan_results():
         return redirect(url_for('scan_network'))
     
     scan_record = None
-    if 'scan_id' in scan_data:
-        scan_record = ScanHistory.query.get(scan_data['scan_id'])
+    if 'scan_id' in scan_data and scan_data['scan_id']:
+        try:
+            scan_record = ScanHistory.query.get(scan_data['scan_id'])
+        except:
+            pass
     
     return render_template('scan_results.html',
                          subnet=scan_data['subnet'],
@@ -415,6 +437,59 @@ def scan_results():
                          results=scan_data['results'],
                          timestamp=scan_data['timestamp'],
                          scan_record=scan_record)
+
+@app.route('/scan/quick', methods=['GET', 'POST'])
+def quick_scan():
+    """Быстрое сканирование (только несколько адресов)"""
+    if request.method == 'POST':
+        try:
+            from scanner import NetworkScanner
+            
+            scanner = NetworkScanner()
+            
+            # Определяем локальную сеть автоматически
+            current_ip = socket.gethostbyname(socket.gethostname())
+            parts = current_ip.split('.')
+            subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+            
+            flash(f'Автоматически определена подсеть: {subnet}', 'info')
+            
+            # Запускаем быстрое сканирование
+            print(f"⚡ Быстрое сканирование подсети: {subnet}")
+            
+            scan_results = scanner.quick_scan(subnet)
+            
+            # Сохраняем запись о сканировании
+            scan_record = ScanHistory(
+                subnet_scanned=subnet,
+                devices_found=len(scan_results),
+                scan_type='quick',
+                initiated_by='Система'
+            )
+            db.session.add(scan_record)
+            db.session.commit()
+            
+            # Сохраняем результаты в сессии
+            session['scan_results'] = {
+                'subnet': subnet,
+                'vlan_id': None,
+                'results': scan_results,
+                'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                'scan_id': scan_record.id
+            }
+            
+            if len(scan_results) > 0:
+                flash(f'✅ Найдено {len(scan_results)} устройств в подсети {subnet}', 'success')
+            else:
+                flash(f'ℹ️ Устройства в подсети {subnet} не найдены', 'info')
+            
+            return redirect(url_for('scan_results'))
+            
+        except Exception as e:
+            flash(f'Не удалось выполнить быстрое сканирование: {str(e)}', 'error')
+            return redirect(url_for('scan_network'))
+    
+    return render_template('quick_scan.html')
 
 @app.route('/reports')
 def reports():
@@ -460,6 +535,27 @@ def scan_status():
         'timestamp': scan_data['timestamp']
     })
 
+@app.route('/api/network/check')
+def check_network():
+    """API для проверки доступности сети"""
+    try:
+        from scanner import NetworkScanner
+        scanner = NetworkScanner()
+        
+        result = scanner.check_network_connectivity()
+        
+        return jsonify({
+            'success': result['success'],
+            'gateway': result['gateway'],
+            'message': result['message']
+        })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Ошибка: {str(e)}'
+        })
+
 @app.route('/system/health')
 def system_health():
     """Проверка здоровья системы"""
@@ -496,15 +592,12 @@ def internal_server_error(e):
 
 if __name__ == '__main__':
     with app.app_context():
-        # Создаем таблицы, если их нет
         try:
+            # Создаем таблицы, если их нет
             db.create_all()
             print("✅ Таблицы базы данных проверены")
         except Exception as e:
             print(f"⚠️  Ошибка при создании таблиц: {e}")
-        
-        # Выполняем миграции
-        migrate_database()
     
     if not wait_for_database():
         print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")

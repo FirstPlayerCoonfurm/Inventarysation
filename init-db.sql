@@ -35,15 +35,15 @@ CREATE TABLE IF NOT EXISTS equipment (
     is_active BOOLEAN DEFAULT TRUE
 );
 
--- Создание таблицы scan_history с колонкой vlan_id
+-- Создание таблицы scan_history
 CREATE TABLE IF NOT EXISTS scan_history (
     id SERIAL PRIMARY KEY,
     subnet_scanned VARCHAR(50) NOT NULL,
-    devices_found INTEGER,
+    devices_found INTEGER DEFAULT 0,
     scan_type VARCHAR(20),
     scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     initiated_by VARCHAR(100),
-    vlan_id INTEGER  -- Добавляем эту колонку
+    vlan_id INTEGER  -- Убедитесь, что эта строка есть
 );
 
 -- Создание индексов

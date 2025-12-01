@@ -20,8 +20,8 @@
     </nav>
 
     <div class="container mt-4">
-        <div class="card">
-            <div class="card-header bg-success text-white">
+        <div class="card shadow-sm">
+            <div class="card-header {% if results and results|length > 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
                 <h4 class="mb-0">
                     <i class="bi bi-check-circle me-2"></i>Результаты сканирования
                 </h4>
@@ -32,13 +32,13 @@
                         <h5>Информация о сканировании</h5>
                         <table class="table table-sm">
                             <tr>
-                                <th>Подсеть:</th>
-                                <td>{{ subnet }}</td>
+                                <th width="40%">Подсеть:</th>
+                                <td><code>{{ subnet }}</code></td>
                             </tr>
                             {% if vlan_id %}
                             <tr>
                                 <th>VLAN ID:</th>
-                                <td>{{ vlan_id }}</td>
+                                <td><span class="badge bg-info">VLAN {{ vlan_id }}</span></td>
                             </tr>
                             {% endif %}
                             <tr>
@@ -47,13 +47,17 @@
                             </tr>
                             <tr>
                                 <th>Найдено устройств:</th>
-                                <td><span class="badge bg-success">{{ results|length }}</span></td>
+                                <td>
+                                    <span class="badge {% if results and results|length > 0 %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {{ results|length }}
+                                    </span>
+                                </td>
                             </tr>
                         </table>
                     </div>
                 </div>
 
-                {% if results %}
+                {% if results and results|length > 0 %}
                 <h5 class="mb-3">Найденные устройства</h5>
                 <div class="table-responsive">
                     <table class="table table-hover">
@@ -64,7 +68,6 @@
                                 <th>MAC-адрес</th>
                                 <th>Операционная система</th>
                                 <th>Статус</th>
-                                <th>Действия</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -77,11 +80,6 @@
                                 <td>
                                     <span class="badge bg-success">Online</span>
                                 </td>
-                                <td>
-                                    <a href="/scan" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-plus-circle"></i> Добавить
-                                    </a>
-                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -89,8 +87,17 @@
                 </div>
                 {% else %}
                 <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    Устройства в указанной подсети не найдены.
+                    <div class="text-center py-4">
+                        <i class="bi bi-exclamation-triangle display-1 text-warning d-block mb-3"></i>
+                        <h4>Устройства не найдены</h4>
+                        <p class="text-muted">В указанной подсети не обнаружено активных устройств.</p>
+                        <p class="text-muted">Возможные причины:</p>
+                        <ul class="text-muted">
+                            <li>Устройства выключены или не подключены к сети</li>
+                            <li>Брандмауэр блокирует ping-запросы</li>
+                            <li>Неверно указана подсеть</li>
+                        </ul>
+                    </div>
                 </div>
                 {% endif %}
 
@@ -98,14 +105,29 @@
                     <a href="/scan" class="btn btn-secondary">
                         <i class="bi bi-arrow-left"></i> Новое сканирование
                     </a>
-                    <a href="/equipment" class="btn btn-primary">
-                        <i class="bi bi-list-ul"></i> К списку оборудования
-                    </a>
+                    <div>
+                        <a href="/equipment" class="btn btn-outline-primary">
+                            <i class="bi bi-list-ul"></i> К списку оборудования
+                        </a>
+                        {% if results and results|length > 0 %}
+                        <button class="btn btn-success" onclick="saveAllDevices()">
+                            <i class="bi bi-save"></i> Сохранить все в базу
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script>
+        function saveAllDevices() {
+            if (confirm('Сохранить все найденные устройства в базу данных?')) {
+                // Здесь можно добавить AJAX запрос для сохранения
+                alert('Функция сохранения всех устройств будет реализована в следующей версии');
+            }
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
