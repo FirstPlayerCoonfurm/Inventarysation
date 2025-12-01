@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчеты - IT Inventory</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">IT Inventory</a>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <div class="container mt-4">
+        <h2 class="mb-4"><i class="bi bi-graph-up me-2"></i>Отчеты и статистика</h2>
+
+        <div class="row">
+            <!-- Статистика по отделам -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Распределение по отделам</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="departmentChart" width="400" height="300"></canvas>
+                        <div class="mt-3">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Отдел</th>
+                                        <th>Количество</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dept, count in dept_stats %}
+                                    <tr>
+                                        <td>{{ dept or 'Не указан' }}</td>
+                                        <td><span class="badge bg-primary">{{ count }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика по ОС -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Распределение по операционным системам</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="osChart" width="400" height="300"></canvas>
+                        <div class="mt-3">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Операционная система</th>
+                                        <th>Количество</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for os, count in os_stats %}
+                                    <tr>
+                                        <td>{{ os or 'Неизвестно' }}</td>
+                                        <td><span class="badge bg-success">{{ count }}</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экспорт отчетов -->
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Экспорт данных</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-file-excel text-success fs-1"></i>
+                                <h5>Excel отчет</h5>
+                                <p class="text-muted">Экспорт всех данных в формате Excel</p>
+                                <button class="btn btn-outline-success w-100" onclick="exportExcel()">Экспортировать</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-file-pdf text-danger fs-1"></i>
+                                <h5>PDF отчет</h5>
+                                <p class="text-muted">Статистический отчет в PDF формате</p>
+                                <button class="btn btn-outline-danger w-100" onclick="exportPDF()">Создать PDF</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <i class="bi bi-graph-up text-info fs-1"></i>
+                                <h5>Дашборд</h5>
+                                <p class="text-muted">Интерактивный дашборд с аналитикой</p>
+                                <button class="btn btn-outline-info w-100" onclick="openDashboard()">Открыть</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // График для отделов
+        const deptCtx = document.getElementById('departmentChart').getContext('2d');
+        const deptChart = new Chart(deptCtx, {
+            type: 'doughnut',
+            data: {
+                labels: [{% for dept, count in dept_stats %}'{{ dept or "Не указан" }}',{% endfor %}],
+                datasets: [{
+                    data: [{% for dept, count in dept_stats %}{{ count }},{% endfor %}],
+                    backgroundColor: [
+                        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                        '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // График для ОС
+        const osCtx = document.getElementById('osChart').getContext('2d');
+        const osChart = new Chart(osCtx, {
+            type: 'bar',
+            data: {
+                labels: [{% for os, count in os_stats %}'{{ os or "Неизвестно" }}',{% endfor %}],
+                datasets: [{
+                    label: 'Количество устройств',
+                    data: [{% for os, count in os_stats %}{{ count }},{% endfor %}],
+                    backgroundColor: '#36A2EB'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        function exportExcel() {
+            alert('Экспорт в Excel будет реализован в ближайшее время');
+        }
+
+        function exportPDF() {
+            alert('Создание PDF отчета будет реализовано в ближайшее время');
+        }
+
+        function openDashboard() {
+            alert('Интерактивный дашборд будет реализован в ближайшее время');
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
