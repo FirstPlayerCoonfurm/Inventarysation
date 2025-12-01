@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 
+# Создаем экземпляр SQLAlchemy без привязки к приложению
 db = SQLAlchemy()
 
 class Equipment(db.Model):
@@ -52,7 +53,7 @@ class ScanHistory(db.Model):
     scan_type = db.Column(db.String(20))
     scan_date = db.Column(db.DateTime, default=datetime.utcnow)
     initiated_by = db.Column(db.String(100))
-    vlan_id = db.Column(db.Integer)  # Добавляем это поле
+    vlan_id = db.Column(db.Integer)
     
     def __repr__(self):
         return f'<ScanHistory {self.subnet_scanned} - {self.scan_date}>'

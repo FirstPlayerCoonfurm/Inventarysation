@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
-from models import db, Equipment, ScanHistory
 from config import Config
 from datetime import datetime
 import socket
@@ -8,12 +7,19 @@ import sys
 import ipaddress
 import re
 
+# Сначала создаем Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 
-# Инициализация базы данных
+# Теперь импортируем db и инициализируем
+from models import db
+
+# Инициализация базы данных с приложением
 db.init_app(app)
+
+# Только ПОСЛЕ инициализации db импортируем модели для регистрации
+from models import Equipment, ScanHistory
 
 def wait_for_database():
     """Ожидает доступность базы данных"""
@@ -71,10 +77,12 @@ def validate_mac_address(mac):
 def index():
     """Главная страница с общей статистикой"""
     try:
-        total_devices = Equipment.query.count()
-        active_devices = Equipment.query.filter_by(is_active=True).count()
-        recent_scans = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(5).all()
-        recent_equipment = Equipment.query.order_by(Equipment.last_seen.desc()).limit(5).all()
+        # Используем app_context для запросов к базе
+        with app.app_context():
+            total_devices = Equipment.query.count()
+            active_devices = Equipment.query.filter_by(is_active=True).count()
+            recent_scans = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(5).all()
+            recent_equipment = Equipment.query.order_by(Equipment.last_seen.desc()).limit(5).all()
         
     except Exception as e:
         print(f"Ошибка базы данных: {e}")
@@ -591,6 +599,7 @@ def internal_server_error(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
+    # Создаем контекст приложения для создания таблиц
     with app.app_context():
         try:
             # Создаем таблицы, если их нет
