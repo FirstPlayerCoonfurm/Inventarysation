@@ -29,6 +29,31 @@ def wait_for_database():
     print("❌ Не удалось подключиться к базе данных")
     return False
 
+def migrate_database():
+    """Выполняет миграции базы данных"""
+    try:
+        with app.app_context():
+            # Проверяем, существует ли таблица scan_history
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            
+            if 'scan_history' in inspector.get_table_names():
+                # Получаем список колонок в таблице scan_history
+                columns = [col['name'] for col in inspector.get_columns('scan_history')]
+                
+                # Если колонки vlan_id нет, добавляем её
+                if 'vlan_id' not in columns:
+                    print("🔧 Выполняем миграцию: добавляем vlan_id в scan_history...")
+                    db.engine.execute('ALTER TABLE scan_history ADD COLUMN vlan_id INTEGER;')
+                    print("✅ Миграция выполнена успешно")
+                else:
+                    print("✅ Структура базы данных актуальна")
+            else:
+                print("⚠️  Таблица scan_history не существует")
+                
+    except Exception as e:
+        print(f"❌ Ошибка при миграции базы данных: {e}")
+
 def validate_subnet_input(subnet):
     """Проверяет и форматирует введенную подсеть"""
     if not subnet:
@@ -471,11 +496,15 @@ def internal_server_error(e):
 
 if __name__ == '__main__':
     with app.app_context():
+        # Создаем таблицы, если их нет
         try:
             db.create_all()
             print("✅ Таблицы базы данных проверены")
         except Exception as e:
             print(f"⚠️  Ошибка при создании таблиц: {e}")
+        
+        # Выполняем миграции
+        migrate_database()
     
     if not wait_for_database():
         print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")
