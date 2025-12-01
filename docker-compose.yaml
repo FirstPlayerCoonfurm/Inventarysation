@@ -21,21 +21,12 @@ services:
     restart: unless-stopped
     networks:
       - app-network
-    command: >
+    command: |
       sh -c "
-        echo '🔄 Инициализация базы данных...' &&
-        sleep 10 &&
-        python -c '
-        import sys
-        sys.path.append(\"/app\")
-        from app import app
-        from models import db
-        with app.app_context():
-        db.create_all()
-        print(\"✅ База данных инициализирована\")
-        ' &&
-        echo '🚀 Запуск приложения...' &&
-        python app.py
+      echo '🔄 Ожидание базы данных...'
+      sleep 10
+      echo '🚀 Запуск приложения...'
+      python app.py
       "
 
   db:
