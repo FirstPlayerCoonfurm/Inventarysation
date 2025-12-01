@@ -6,7 +6,7 @@ import socket
 import time
 import sys
 import ipaddress
-import re  # Добавлен для валидации MAC-адреса
+import re
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -38,20 +38,16 @@ def validate_subnet_input(subnet):
     
     # Если введен просто IP, добавляем /24 по умолчанию
     if '/' not in subnet:
-        # Проверяем, является ли это валидным IP
         try:
             ipaddress.ip_address(subnet)
-            # Если это конкретный IP, сканируем только его
             subnet = f"{subnet}/32"
             return subnet, f"Сканируется один IP: {subnet}"
         except ValueError:
             return None, f"Некорректный IP-адрес: {subnet}"
     
-    # Проверяем корректность подсети CIDR
     try:
         network = ipaddress.ip_network(subnet, strict=False)
         
-        # Ограничиваем размер сканируемой подсети
         if network.num_addresses > 256:
             flash(f"Подсеть слишком большая. Сканируем только первые 256 адресов из {subnet}", "warning")
         
@@ -66,7 +62,6 @@ def validate_mac_address(mac):
     
     mac_pattern = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
     if mac_pattern.match(mac):
-        # Стандартизируем формат
         mac = mac.upper().replace('-', ':')
         return True, mac
     return False, "Некорректный формат MAC-адреса. Используйте формат: 00:11:22:33:44:55 или 00-11-22-33-44-55"
@@ -99,7 +94,6 @@ def equipment_list():
     """Список всего оборудования с пагинацией"""
     try:
         search = request.args.get('search', '')
-        department = request.args.get('department', '')
         page = request.args.get('page', 1, type=int)
         per_page = 20
         
@@ -113,10 +107,6 @@ def equipment_list():
                 (Equipment.mac_address.contains(search))
             )
         
-        if department:
-            query = query.filter(Equipment.department == department)
-        
-        # Пагинация
         equipment_pagination = query.order_by(Equipment.last_seen.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
@@ -128,7 +118,6 @@ def equipment_list():
         equipment_pagination = None
         equipment = []
         search = ''
-        department = ''
 
     return render_template('equipment_list.html', 
                          equipment=equipment, 
@@ -152,16 +141,9 @@ def equipment_edit(equipment_id):
     
     if request.method == 'POST':
         try:
-            # Получаем данные из формы
             equipment.hostname = request.form.get('hostname', '').strip() or None
             equipment.department = request.form.get('department', '').strip() or None
             equipment.inventory_number = request.form.get('inventory_number', '').strip() or None
-            equipment.serial_number = request.form.get('serial_number', '').strip() or None
-            equipment.model = request.form.get('model', '').strip() or None
-            equipment.manufacturer = request.form.get('manufacturer', '').strip() or None
-            equipment.os_name = request.form.get('os_name', '').strip() or None
-            equipment.os_version = request.form.get('os_version', '').strip() or None
-            equipment.description = request.form.get('description', '').strip() or None
             equipment.location = request.form.get('location', '').strip() or None
             equipment.responsible_person = request.form.get('responsible_person', '').strip() or None
             equipment.is_active = 'is_active' in request.form
@@ -187,7 +169,6 @@ def equipment_edit(equipment_id):
             if mac_address:
                 is_valid, error_msg = validate_mac_address(mac_address)
                 if is_valid:
-                    # Стандартизируем формат
                     equipment.mac_address = mac_address.upper().replace('-', ':')
                 else:
                     flash(error_msg, 'error')
@@ -195,8 +176,7 @@ def equipment_edit(equipment_id):
             else:
                 equipment.mac_address = None
             
-            # Обновляем дату последнего изменения
-            equipment.updated_at = datetime.utcnow()
+            equipment.last_seen = datetime.utcnow()
             
             db.session.commit()
             flash('✅ Данные оборудования успешно обновлены', 'success')
@@ -215,10 +195,8 @@ def equipment_delete(equipment_id):
     try:
         equipment = Equipment.query.get_or_404(equipment_id)
         
-        # Мягкое удаление - помечаем как неактивное
         equipment.is_active = False
-        equipment.deleted_at = datetime.utcnow()
-        equipment.updated_at = datetime.utcnow()
+        equipment.last_seen = datetime.utcnow()
         
         db.session.commit()
         flash('✅ Оборудование помечено как неактивное', 'success')
@@ -234,48 +212,36 @@ def equipment_add():
     """Добавление нового оборудования вручную"""
     if request.method == 'POST':
         try:
-            # Валидация обязательных полей
             ip_address = request.form.get('ip_address', '').strip()
             if not ip_address:
                 flash('IP-адрес обязателен для заполнения', 'error')
                 return redirect(url_for('equipment_add'))
             
-            # Проверяем валидность IP
             try:
                 ipaddress.ip_address(ip_address)
             except ValueError:
                 flash('Некорректный IP-адрес', 'error')
                 return redirect(url_for('equipment_add'))
             
-            # Проверяем, существует ли уже оборудование с таким IP
             existing = Equipment.query.filter_by(ip_address=ip_address).first()
             if existing:
                 flash(f'Оборудование с IP-адресом {ip_address} уже существует', 'error')
                 return redirect(url_for('equipment_add'))
             
-            # Валидация MAC-адреса
             mac_address = request.form.get('mac_address', '').strip()
             if mac_address:
                 is_valid, error_msg = validate_mac_address(mac_address)
                 if not is_valid:
                     flash(error_msg, 'error')
                     return redirect(url_for('equipment_add'))
-                # Стандартизируем формат
                 mac_address = mac_address.upper().replace('-', ':')
             
-            # Создаем новое оборудование
             new_equipment = Equipment(
                 ip_address=ip_address,
                 hostname=request.form.get('hostname', '').strip() or None,
                 mac_address=mac_address or None,
                 department=request.form.get('department', '').strip() or None,
                 inventory_number=request.form.get('inventory_number', '').strip() or None,
-                serial_number=request.form.get('serial_number', '').strip() or None,
-                model=request.form.get('model', '').strip() or None,
-                manufacturer=request.form.get('manufacturer', '').strip() or None,
-                os_name=request.form.get('os_name', '').strip() or None,
-                os_version=request.form.get('os_version', '').strip() or None,
-                description=request.form.get('description', '').strip() or None,
                 location=request.form.get('location', '').strip() or None,
                 responsible_person=request.form.get('responsible_person', '').strip() or None,
                 is_active='is_active' in request.form,
@@ -283,7 +249,6 @@ def equipment_add():
                 last_seen=datetime.utcnow()
             )
             
-            # Валидация VLAN
             vlan_id = request.form.get('vlan_id', '').strip()
             if vlan_id:
                 try:
@@ -310,13 +275,207 @@ def equipment_add():
     
     return render_template('equipment_add.html')
 
-# ... остальные маршруты остаются без изменений (scan_network, scan_results, quick_scan, reports и т.д.)
+@app.route('/scan', methods=['GET', 'POST'])
+def scan_network():
+    """Страница сканирования сети"""
+    if request.method == 'POST':
+        subnet_input = request.form.get('subnet', '').strip()
+        vlan_id_input = request.form.get('vlan_id', '').strip()
+        
+        subnet, subnet_message = validate_subnet_input(subnet_input)
+        if subnet is None:
+            flash(subnet_message, 'error')
+            return redirect(url_for('scan_network'))
+        
+        if subnet_message:
+            flash(subnet_message, 'info')
+        
+        vlan_id = None
+        if vlan_id_input:
+            try:
+                vlan_id = int(vlan_id_input)
+                if not (1 <= vlan_id <= 4094):
+                    flash('Ошибка: VLAN ID должен быть в диапазоне 1-4094', 'error')
+                    return redirect(url_for('scan_network'))
+            except ValueError:
+                flash('Ошибка: VLAN ID должен быть числом', 'error')
+                return redirect(url_for('scan_network'))
+        
+        try:
+            from scanner import NetworkScanner
+        except ImportError:
+            flash('Модуль сканирования не найден', 'error')
+            return redirect(url_for('scan_network'))
+        
+        scanner = NetworkScanner()
+        
+        print(f"🔄 Запуск сканирования подсети: {subnet}, VLAN: {vlan_id}")
+        
+        import threading
+        from queue import Queue
+        
+        result_queue = Queue()
+        
+        def run_scan():
+            try:
+                scan_results = scanner.scan_subnet(subnet, vlan_id, max_threads=10, timeout=1)
+                result_queue.put(('success', scan_results))
+            except Exception as e:
+                result_queue.put(('error', str(e)))
+        
+        scan_thread = threading.Thread(target=run_scan)
+        scan_thread.daemon = True
+        scan_thread.start()
+        
+        scan_thread.join(timeout=30)
+        
+        if scan_thread.is_alive():
+            flash('Сканирование прервано по таймауту (30 секунд)', 'warning')
+            return redirect(url_for('scan_network'))
+        
+        if result_queue.empty():
+            flash('Сканирование не вернуло результатов', 'error')
+            return redirect(url_for('scan_network'))
+        
+        status, result = result_queue.get()
+        
+        if status == 'error':
+            flash(f'Ошибка сканирования: {result}', 'error')
+            return redirect(url_for('scan_network'))
+        
+        scan_results = result
+        
+        scan_record = ScanHistory(
+            subnet_scanned=subnet,
+            devices_found=len(scan_results),
+            scan_type='manual',
+            initiated_by='Администратор',
+            vlan_id=vlan_id
+        )
+        db.session.add(scan_record)
+        db.session.commit()
+        
+        session['scan_results'] = {
+            'subnet': subnet,
+            'vlan_id': vlan_id,
+            'results': scan_results,
+            'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'scan_id': scan_record.id
+        }
+        
+        if len(scan_results) > 0:
+            flash(f'✅ Найдено {len(scan_results)} устройств в подсети {subnet}', 'success')
+        else:
+            flash(f'ℹ️ Устройства в подсети {subnet} не найдены', 'info')
+        
+        return redirect(url_for('scan_results'))
+    
+    return render_template('scan.html')
+
+@app.route('/scan/results')
+def scan_results():
+    """Страница результатов сканирования"""
+    scan_data = session.get('scan_results')
+    if not scan_data:
+        flash('Нет результатов сканирования. Запустите сканирование сначала.', 'warning')
+        return redirect(url_for('scan_network'))
+    
+    scan_record = None
+    if 'scan_id' in scan_data:
+        scan_record = ScanHistory.query.get(scan_data['scan_id'])
+    
+    return render_template('scan_results.html',
+                         subnet=scan_data['subnet'],
+                         vlan_id=scan_data['vlan_id'],
+                         results=scan_data['results'],
+                         timestamp=scan_data['timestamp'],
+                         scan_record=scan_record)
+
+@app.route('/reports')
+def reports():
+    """Страница с отчетами"""
+    try:
+        dept_stats = db.session.query(
+            Equipment.department,
+            db.func.count(Equipment.id)
+        ).group_by(Equipment.department).all()
+        
+        os_stats = db.session.query(
+            Equipment.os_name,
+            db.func.count(Equipment.id)
+        ).group_by(Equipment.os_name).all()
+        
+        vlan_stats = db.session.query(
+            Equipment.vlan_id,
+            db.func.count(Equipment.id)
+        ).filter(Equipment.vlan_id.isnot(None)).group_by(Equipment.vlan_id).all()
+        
+    except Exception as e:
+        flash(f'Ошибка загрузки отчетов: {e}', 'error')
+        dept_stats = []
+        os_stats = []
+        vlan_stats = []
+    
+    return render_template('reports.html',
+                         dept_stats=dept_stats,
+                         os_stats=os_stats,
+                         vlan_stats=vlan_stats)
+
+@app.route('/api/scan/status')
+def scan_status():
+    """API для проверки статуса сканирования"""
+    scan_data = session.get('scan_results')
+    if not scan_data:
+        return jsonify({'status': 'no_scan'})
+    
+    return jsonify({
+        'status': 'complete',
+        'subnet': scan_data['subnet'],
+        'devices_found': len(scan_data['results']),
+        'timestamp': scan_data['timestamp']
+    })
+
+@app.route('/system/health')
+def system_health():
+    """Проверка здоровья системы"""
+    try:
+        db_status = Config.check_database_connection()
+        
+        stats = {
+            'database': 'healthy' if db_status else 'unhealthy',
+            'equipment_count': Equipment.query.count(),
+            'active_equipment': Equipment.query.filter_by(is_active=True).count(),
+            'scans_count': ScanHistory.query.count(),
+        }
+        
+        return jsonify({
+            'status': 'healthy' if db_status else 'degraded',
+            'timestamp': datetime.utcnow().isoformat(),
+            'components': stats
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('500.html'), 500
 
 if __name__ == '__main__':
     with app.app_context():
-        # Создаем таблицы, если их нет
-        db.create_all()
-        print("✅ Таблицы базы данных проверены/созданы")
+        try:
+            db.create_all()
+            print("✅ Таблицы базы данных проверены")
+        except Exception as e:
+            print(f"⚠️  Ошибка при создании таблиц: {e}")
     
     if not wait_for_database():
         print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")

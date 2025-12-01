@@ -47,11 +47,12 @@ class ScanHistory(db.Model):
     __tablename__ = 'scan_history'
     
     id = db.Column(db.Integer, primary_key=True)
-    subnet_scanned = db.Column(db.String(20), nullable=False)
+    subnet_scanned = db.Column(db.String(50), nullable=False)
     devices_found = db.Column(db.Integer)
     scan_type = db.Column(db.String(20))
     scan_date = db.Column(db.DateTime, default=datetime.utcnow)
     initiated_by = db.Column(db.String(100))
+    vlan_id = db.Column(db.Integer)  # Добавляем это поле
     
     def __repr__(self):
         return f'<ScanHistory {self.subnet_scanned} - {self.scan_date}>'

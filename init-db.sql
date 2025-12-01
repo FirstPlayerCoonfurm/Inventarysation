@@ -38,11 +38,12 @@ CREATE TABLE IF NOT EXISTS equipment (
 -- Создание таблицы scan_history
 CREATE TABLE IF NOT EXISTS scan_history (
     id SERIAL PRIMARY KEY,
-    subnet_scanned VARCHAR(20) NOT NULL,
+    subnet_scanned VARCHAR(50) NOT NULL,
     devices_found INTEGER,
     scan_type VARCHAR(20),
     scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    initiated_by VARCHAR(100)
+    initiated_by VARCHAR(100),
+    vlan_id INTEGER  -- Добавляем это поле
 );
 
 -- Создание индексов
