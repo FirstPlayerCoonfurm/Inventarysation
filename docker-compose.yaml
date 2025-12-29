@@ -5,6 +5,8 @@ services:
     build: .
     ports:
       - "5000:5000"
+      # Попробуйте также другие порты:
+      # - "8080:5000"
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -13,21 +15,31 @@ services:
       - DB_PASSWORD=secure_password
       - SECRET_KEY=your-production-secret-key-change-this
       - PYTHONUNBUFFERED=1
+      # Добавляем для диагностики
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./logs:/home/app/logs
+      # Монтируем код для live-обновления
+      - .:/app
     restart: unless-stopped
     networks:
       - app-network
-    command: |
-      sh -c "
-      echo '🔄 Ожидание базы данных...'
-      sleep 10
-      echo '🚀 Запуск приложения...'
-      python app.py
-      "
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # Простая команда без сложного sh
+    command: python app.py
+    # Добавляем healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   db:
     image: postgres:15
@@ -38,8 +50,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    ports:
-      - "5432:5432"
+    # Не открываем порт БД наружу для безопасности
+    # ports:
+    #   - "5432:5432"
+    expose:
+      - "5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U it_user -d it_inventory"]
