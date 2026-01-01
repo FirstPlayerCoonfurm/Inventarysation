@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
+from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
+from werkzeug.security import generate_password_hash, check_password_hash
 from config import Config
 from datetime import datetime
 import socket
@@ -12,14 +14,54 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = Config.SECRET_KEY
 
+# Инициализация Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'index'
+login_manager.login_message = 'Пожалуйста, войдите в систему для доступа к этой странице.'
+login_manager.login_message_category = 'warning'
+
 # Теперь импортируем db и инициализируем
 from models import db
 
 # Инициализация базы данных с приложением
 db.init_app(app)
 
-# Только ПОСЛЕ инициализации db импортируем модели для регистрации
-from models import Equipment, ScanHistory
+# Импортируем модели для регистрации
+from models import Equipment, ScanHistory, User
+
+def get_guest_user():
+    """Создает гостевого пользователя"""
+    class GuestUser(UserMixin):
+        id = 0
+        username = 'Гость'
+        role = 'guest'
+        department = None
+        full_name = 'Гостевой доступ'
+
+        @property
+        def is_authenticated(self):
+            return True
+
+        @property
+        def is_active(self):
+            return True
+
+        @property
+        def is_anonymous(self):
+            return False
+
+        def get_id(self):
+            return str(self.id)
+
+    return GuestUser()
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Загрузчик пользователя для Flask-Login"""
+    if user_id == '0':  # Гостевой пользователь
+        return get_guest_user()
+    return User.query.get(int(user_id))
 
 def wait_for_database():
     """Ожидает доступность базы данных"""
@@ -73,16 +115,138 @@ def validate_mac_address(mac):
         return True, mac
     return False, "Некорректный формат MAC-адреса. Используйте формат: 00:11:22:33:44:55 или 00-11-22-33-44-55"
 
+def role_required(roles):
+    """Декоратор для проверки ролей пользователя"""
+    def decorator(f):
+        @login_required
+        def decorated_function(*args, **kwargs):
+            if current_user.role not in roles:
+                flash('Доступ запрещен. У вас недостаточно прав.', 'danger')
+                return redirect(url_for('dashboard'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 @app.route('/')
 def index():
-    """Главная страница с общей статистикой"""
+    """Главная страница с регистрацией и входом"""
+    if current_user.is_authenticated and current_user.id != 0:
+        return redirect(url_for('dashboard'))
+    return render_template('index.html')
+
+@app.route('/login', methods=['POST'])
+def login():
+    """Аутентификация пользователя"""
+    if current_user.is_authenticated and current_user.id != 0:
+        return redirect(url_for('dashboard'))
+
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not username or not password:
+        flash('Пожалуйста, заполните все поля', 'warning')
+        return redirect(url_for('index'))
+
+    user = User.query.filter_by(username=username).first()
+
+    if user and check_password_hash(user.password, password):
+        login_user(user, remember=True)
+        # Убрали обновление last_login
+        flash(f'Добро пожаловать, {user.full_name}!', 'success')
+        return redirect(url_for('dashboard'))
+
+    flash('Неверный логин или пароль', 'danger')
+    return redirect(url_for('index'))
+
+@app.route('/register', methods=['POST'])
+def register():
+    """Регистрация нового пользователя"""
+    if current_user.is_authenticated and current_user.id != 0:
+        return redirect(url_for('dashboard'))
+
+    username = request.form.get('username')
+    password = request.form.get('password')
+    confirm_password = request.form.get('confirm_password')
+    full_name = request.form.get('full_name')
+    department = request.form.get('department')
+    role = request.form.get('role', 'other')
+
+    # Проверки
+    if password != confirm_password:
+        flash('Пароли не совпадают', 'danger')
+        return redirect(url_for('index'))
+
+    if len(password) < 6:
+        flash('Пароль должен содержать минимум 6 символов', 'danger')
+        return redirect(url_for('index'))
+
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        flash('Пользователь с таким логином уже существует', 'danger')
+        return redirect(url_for('index'))
+
+    # Создаем пользователя
+    hashed_password = generate_password_hash(password)
+    new_user = User(
+        username=username,
+        password=hashed_password,
+        full_name=full_name,
+        department=department,
+        role=role,
+        created_at=datetime.utcnow()
+    )
+
     try:
-        # Используем app_context для запросов к базе
-        with app.app_context():
+        db.session.add(new_user)
+        db.session.commit()
+        flash('Регистрация успешна! Теперь войдите в систему', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка при регистрации: {str(e)}', 'danger')
+
+    return redirect(url_for('index'))
+
+@app.route('/guest_login', methods=['POST'])
+def guest_login():
+    """Вход как гость"""
+    if current_user.is_authenticated:
+        logout_user()
+
+    guest_user = get_guest_user()
+    login_user(guest_user, remember=False)
+
+    flash('Вы вошли как гость. Функции редактирования недоступны', 'info')
+    return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    """Главная панель управления"""
+    try:
+        # Разная логика для разных ролей
+        if current_user.role == 'it':
+            # IT видит все оборудование
             total_devices = Equipment.query.count()
             active_devices = Equipment.query.filter_by(is_active=True).count()
-            recent_scans = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(5).all()
-            recent_equipment = Equipment.query.order_by(Equipment.last_seen.desc()).limit(5).all()
+            recent_equipment = Equipment.query.order_by(Equipment.last_seen.desc()).limit(10).all()
+        elif current_user.role == 'other':
+            # Другие отделы видят только свое оборудование
+            total_devices = Equipment.query.filter_by(department=current_user.department).count()
+            active_devices = Equipment.query.filter_by(
+                department=current_user.department,
+                is_active=True
+            ).count()
+            recent_equipment = Equipment.query.filter_by(
+                department=current_user.department
+            ).order_by(Equipment.last_seen.desc()).limit(10).all()
+        else:  # guest
+            # Гости видят все, но только для просмотра
+            total_devices = Equipment.query.count()
+            active_devices = Equipment.query.filter_by(is_active=True).count()
+            recent_equipment = Equipment.query.order_by(Equipment.last_seen.desc()).limit(10).all()
+
+        # Получаем историю сканирований
+        recent_scans = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(5).all()
 
     except Exception as e:
         print(f"Ошибка базы данных: {e}")
@@ -92,13 +256,22 @@ def index():
         recent_equipment = []
         flash(f'Ошибка подключения к базе данных: {e}', 'error')
 
-    return render_template('index.html',
+    return render_template('dashboard.html',
                          total_devices=total_devices,
                          active_devices=active_devices,
                          recent_scans=recent_scans,
                          recent_equipment=recent_equipment)
 
+@app.route('/logout')
+@login_required
+def logout():
+    """Выход из системы"""
+    logout_user()
+    flash('Вы вышли из системы', 'info')
+    return redirect(url_for('index'))
+
 @app.route('/equipment')
+@login_required
 def equipment_list():
     """Список всего оборудования с пагинацией"""
     try:
@@ -106,7 +279,13 @@ def equipment_list():
         page = request.args.get('page', 1, type=int)
         per_page = 20
 
-        query = Equipment.query
+        # Фильтруем по ролям
+        if current_user.role == 'it':
+            query = Equipment.query
+        elif current_user.role == 'other':
+            query = Equipment.query.filter_by(department=current_user.department)
+        else:  # guest
+            query = Equipment.query
 
         if search:
             query = query.filter(
@@ -134,19 +313,36 @@ def equipment_list():
                          search=search)
 
 @app.route('/equipment/<int:equipment_id>')
+@login_required
 def equipment_detail(equipment_id):
     """Детальная информация об оборудовании"""
     try:
         equipment = Equipment.query.get_or_404(equipment_id)
+
+        # Проверка прав доступа для non-IT пользователей
+        if current_user.role == 'other' and equipment.department != current_user.department:
+            flash('Доступ к этому оборудованию запрещен', 'danger')
+            return redirect(url_for('equipment_list'))
+
         return render_template('equipment_detail.html', equipment=equipment)
     except Exception as e:
         flash(f'Ошибка загрузки оборудования: {e}', 'error')
         return redirect(url_for('equipment_list'))
 
 @app.route('/equipment/<int:equipment_id>/edit', methods=['GET', 'POST'])
+@login_required
 def equipment_edit(equipment_id):
     """Редактирование оборудования"""
     equipment = Equipment.query.get_or_404(equipment_id)
+
+    # Проверка прав доступа
+    if current_user.role == 'guest':
+        flash('Гостям запрещено редактировать оборудование', 'warning')
+        return redirect(url_for('equipment_detail', equipment_id=equipment_id))
+
+    if current_user.role == 'other' and equipment.department != current_user.department:
+        flash('Доступ к редактированию этого оборудования запрещен', 'danger')
+        return redirect(url_for('equipment_detail', equipment_id=equipment_id))
 
     if request.method == 'POST':
         try:
@@ -199,8 +395,10 @@ def equipment_edit(equipment_id):
     return render_template('equipment_edit.html', equipment=equipment)
 
 @app.route('/equipment/<int:equipment_id>/delete', methods=['POST'])
+@login_required
+@role_required(['it'])
 def equipment_delete(equipment_id):
-    """Удаление оборудования (мягкое удаление)"""
+    """Удаление оборудования (мягкое удаление) - только для IT"""
     try:
         equipment = Equipment.query.get_or_404(equipment_id)
 
@@ -217,8 +415,13 @@ def equipment_delete(equipment_id):
     return redirect(url_for('equipment_list'))
 
 @app.route('/equipment/add', methods=['GET', 'POST'])
+@login_required
 def equipment_add():
     """Добавление нового оборудования вручную"""
+    if current_user.role == 'guest':
+        flash('Гостям запрещено добавлять оборудование', 'warning')
+        return redirect(url_for('equipment_list'))
+
     if request.method == 'POST':
         try:
             ip_address = request.form.get('ip_address', '').strip()
@@ -249,7 +452,7 @@ def equipment_add():
                 ip_address=ip_address,
                 hostname=request.form.get('hostname', '').strip() or None,
                 mac_address=mac_address or None,
-                department=request.form.get('department', '').strip() or None,
+                department=request.form.get('department', '').strip() or (current_user.department if current_user.role == 'other' else None),
                 inventory_number=request.form.get('inventory_number', '').strip() or None,
                 location=request.form.get('location', '').strip() or None,
                 responsible_person=request.form.get('responsible_person', '').strip() or None,
@@ -285,8 +488,13 @@ def equipment_add():
     return render_template('equipment_add.html')
 
 @app.route('/scan', methods=['GET', 'POST'])
+@login_required
 def scan_network():
     """Страница сканирования сети"""
+    if current_user.role == 'guest':
+        flash('Гостям запрещено сканировать сеть', 'warning')
+        return redirect(url_for('dashboard'))
+
     # Получаем историю сканирований для отображения
     try:
         scan_history = ScanHistory.query.order_by(ScanHistory.scan_date.desc()).limit(10).all()
@@ -334,7 +542,7 @@ def scan_network():
             return render_template('scan.html', scan_history=scan_history)
 
         # Передаем приложение Flask в NetworkScanner
-        scanner = NetworkScanner(app)  # <--- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        scanner = NetworkScanner(app)
 
         print(f"🔄 Запуск сканирования подсети: {subnet}, VLAN: {vlan_id}")
         print(f"⚙️  Параметры: потоки={max_threads}, таймаут={timeout}с")
@@ -395,7 +603,7 @@ def scan_network():
                 subnet_scanned=subnet,
                 devices_found=len(scan_results),
                 scan_type='manual',
-                initiated_by='Администратор',
+                initiated_by=current_user.full_name or current_user.username,
                 vlan_id=vlan_id
             )
             db.session.add(scan_record)
@@ -426,6 +634,7 @@ def scan_network():
     return render_template('scan.html', scan_history=scan_history)
 
 @app.route('/scan/results')
+@login_required
 def scan_results():
     """Страница результатов сканирования"""
     scan_data = session.get('scan_results')
@@ -448,14 +657,19 @@ def scan_results():
                          scan_record=scan_record)
 
 @app.route('/scan/quick', methods=['GET', 'POST'])
+@login_required
 def quick_scan():
     """Быстрое сканирование (только несколько адресов)"""
+    if current_user.role == 'guest':
+        flash('Гостям запрещено сканировать сеть', 'warning')
+        return redirect(url_for('dashboard'))
+
     if request.method == 'POST':
         try:
             from scanner import NetworkScanner
 
             # Передаем приложение Flask в NetworkScanner
-            scanner = NetworkScanner(app)  # <--- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+            scanner = NetworkScanner(app)
 
             # Определяем локальную сеть автоматически
             current_ip = socket.gethostbyname(socket.gethostname())
@@ -475,7 +689,7 @@ def quick_scan():
                     subnet_scanned=subnet,
                     devices_found=len(scan_results),
                     scan_type='quick',
-                    initiated_by='Система'
+                    initiated_by=current_user.full_name or current_user.username
                 )
                 db.session.add(scan_record)
                 db.session.commit()
@@ -506,23 +720,46 @@ def quick_scan():
     return render_template('quick_scan.html')
 
 @app.route('/reports')
+@login_required
 def reports():
     """Страница с отчетами"""
     try:
-        dept_stats = db.session.query(
-            Equipment.department,
-            db.func.count(Equipment.id)
-        ).group_by(Equipment.department).all()
+        # Разные отчеты для разных ролей
+        if current_user.role == 'it':
+            dept_stats = db.session.query(
+                Equipment.department,
+                db.func.count(Equipment.id)
+            ).group_by(Equipment.department).all()
 
-        os_stats = db.session.query(
-            Equipment.os_name,
-            db.func.count(Equipment.id)
-        ).group_by(Equipment.os_name).all()
+            os_stats = db.session.query(
+                Equipment.os_name,
+                db.func.count(Equipment.id)
+            ).group_by(Equipment.os_name).all()
 
-        vlan_stats = db.session.query(
-            Equipment.vlan_id,
-            db.func.count(Equipment.id)
-        ).filter(Equipment.vlan_id.isnot(None)).group_by(Equipment.vlan_id).all()
+            vlan_stats = db.session.query(
+                Equipment.vlan_id,
+                db.func.count(Equipment.id)
+            ).filter(Equipment.vlan_id.isnot(None)).group_by(Equipment.vlan_id).all()
+        elif current_user.role == 'other':
+            # Только статистика по отделу пользователя
+            dept_stats = [(current_user.department, Equipment.query.filter_by(
+                department=current_user.department).count())]
+
+            os_stats = db.session.query(
+                Equipment.os_name,
+                db.func.count(Equipment.id)
+            ).filter_by(department=current_user.department).group_by(Equipment.os_name).all()
+
+            vlan_stats = db.session.query(
+                Equipment.vlan_id,
+                db.func.count(Equipment.id)
+            ).filter(
+                Equipment.vlan_id.isnot(None),
+                Equipment.department == current_user.department
+            ).group_by(Equipment.vlan_id).all()
+        else:  # guest
+            flash('Гостям доступен только просмотр оборудования', 'info')
+            return redirect(url_for('dashboard'))
 
     except Exception as e:
         flash(f'Ошибка загрузки отчетов: {e}', 'error')
@@ -536,6 +773,7 @@ def reports():
                          vlan_stats=vlan_stats)
 
 @app.route('/api/scan/status')
+@login_required
 def scan_status():
     """API для проверки статуса сканирования"""
     scan_data = session.get('scan_results')
@@ -550,12 +788,19 @@ def scan_status():
     })
 
 @app.route('/api/network/check')
+@login_required
 def check_network():
     """API для проверки доступности сети"""
+    if current_user.role == 'guest':
+        return jsonify({
+            'success': False,
+            'message': 'Гостям запрещена проверка сети'
+        }), 403
+
     try:
         from scanner import NetworkScanner
         # Передаем приложение Flask в NetworkScanner
-        scanner = NetworkScanner(app)  # <--- ИСПРАВЛЕНИЕ
+        scanner = NetworkScanner(app)
 
         result = scanner.check_network_connectivity()
 
@@ -582,6 +827,7 @@ def system_health():
             'equipment_count': Equipment.query.count(),
             'active_equipment': Equipment.query.filter_by(is_active=True).count(),
             'scans_count': ScanHistory.query.count(),
+            'users_count': User.query.count() if current_user.role == 'it' else 'hidden'
         }
 
         return jsonify({
@@ -597,6 +843,59 @@ def system_health():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+@app.route('/profile')
+@login_required
+def profile():
+    """Профиль пользователя"""
+    if current_user.role == 'guest':
+        flash('Гостевой профиль не доступен', 'info')
+        return redirect(url_for('dashboard'))
+    return render_template('profile.html', user=current_user)
+
+@app.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
+def profile_edit():
+    """Редактирование профиля пользователя"""
+    if current_user.role == 'guest':
+        flash('Гостевой профиль нельзя редактировать', 'warning')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        try:
+            current_user.full_name = request.form.get('full_name', '').strip()
+            current_user.department = request.form.get('department', '').strip()
+
+            # Смена пароля
+            current_password = request.form.get('current_password', '').strip()
+            new_password = request.form.get('new_password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+
+            if current_password and new_password:
+                if not check_password_hash(current_user.password, current_password):
+                    flash('Текущий пароль неверен', 'danger')
+                    return redirect(url_for('profile_edit'))
+
+                if new_password != confirm_password:
+                    flash('Новые пароли не совпадают', 'danger')
+                    return redirect(url_for('profile_edit'))
+
+                if len(new_password) < 6:
+                    flash('Новый пароль должен содержать минимум 6 символов', 'danger')
+                    return redirect(url_for('profile_edit'))
+
+                current_user.password = generate_password_hash(new_password)
+
+            db.session.commit()
+            flash('Профиль успешно обновлен', 'success')
+            return redirect(url_for('profile'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Ошибка при обновлении профиля: {str(e)}', 'danger')
+            return redirect(url_for('profile_edit'))
+
+    return render_template('profile_edit.html', user=current_user)
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
@@ -611,16 +910,37 @@ if __name__ == '__main__':
         try:
             # Создаем таблицы, если их нет
             db.create_all()
+
+            # Проверяем наличие колонки last_login в таблице user
+            # Если её нет, добавляем
+            try:
+                from sqlalchemy import inspect, text
+                inspector = inspect(db.engine)
+                columns = [col['name'] for col in inspector.get_columns('user')]
+
+                if 'last_login' not in columns:
+                    print("⚠️  Колонка last_login отсутствует, добавляем...")
+                    db.session.execute(text('ALTER TABLE "user" ADD COLUMN last_login TIMESTAMP'))
+                    db.session.commit()
+                    print("✅ Колонка last_login добавлена")
+            except Exception as e:
+                print(f"⚠️  Не удалось проверить/добавить колонку last_login: {e}")
+
+            # Создаем тестового IT-пользователя если его нет
+            if not User.query.filter_by(username='admin').first():
+                from werkzeug.security import generate_password_hash
+                admin_user = User(
+                    username='admin',
+                    password=generate_password_hash('admin123'),
+                    full_name='Администратор',
+                    department='IT',
+                    role='it',
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(admin_user)
+                db.session.commit()
+                print("✅ Создан администратор по умолчанию: admin/admin123")
+
             print("✅ Таблицы базы данных проверены")
         except Exception as e:
             print(f"⚠️  Ошибка при создании таблиц: {e}")
-
-    if not wait_for_database():
-        print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")
-
-    print("🚀 Запуск IT Inventory System...")
-    print(f"📊 База данных: {Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}")
-    print(f"🌐 Приложение доступно по адресу: http://0.0.0.0:5000")
-
-    # Убедимся, что Flask слушает на всех интерфейсах
-    app.run(host='0.0.0.0', port=5000, debug=False)  # debug=False для продакшн

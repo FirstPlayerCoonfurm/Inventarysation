@@ -1,247 +1,230 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ equipment.hostname or equipment.ip_address }} - IT Inventory</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
-</head>
-<body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="/">IT Inventory</a>
-            <div>
-                <a href="/equipment" class="btn btn-outline-light me-2">
-                    <i class="bi bi-arrow-left"></i> Назад
-                </a>
-                <a href="/equipment/{{ equipment.id }}/edit" class="btn btn-warning">
-                    <i class="bi bi-pencil"></i> Редактировать
-                </a>
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container mt-4">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">
-                    <i class="bi bi-pc-display-horizontal me-2"></i>
-                    {{ equipment.hostname or 'Неизвестное устройство' }}
-                    <small class="text-light">({{ equipment.ip_address }})</small>
-                </h4>
+{% block title %}{{ equipment.hostname or equipment.ip_address }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">
+                <i class="bi bi-pc-display-horizontal me-2"></i>
+                {{ equipment.hostname or 'Неизвестное устройство' }}
+                <small class="text-light">({{ equipment.ip_address }})</small>
+            </h4>
+        </div>
+
+        <div class="card-body">
+            <!-- Копируем остальной контент из вашего файла -->
+            <div class="row">
+                <!-- Основная информация -->
+                <div class="col-md-6">
+                    <h5 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-info-circle me-2"></i>Основная информация
+                    </h5>
+
+                    <table class="table table-borderless">
+                        <tr>
+                            <th width="40%">IP-адрес:</th>
+                            <td><code class="fs-5">{{ equipment.ip_address }}</code></td>
+                        </tr>
+                        <tr>
+                            <th>Имя устройства:</th>
+                            <td>{{ equipment.hostname or '<span class="text-muted">Не указано</span>'|safe }}</td>
+                        </tr>
+                        <tr>
+                            <th>MAC-адрес:</th>
+                            <td><code>{{ equipment.mac_address or 'Неизвестно' }}</code></td>
+                        </tr>
+                        <tr>
+                            <th>VLAN ID:</th>
+                            <td>
+                                {% if equipment.vlan_id %}
+                                <span class="badge bg-info">VLAN {{ equipment.vlan_id }}</span>
+                                {% else %}
+                                <span class="text-muted">Не указан</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Статус:</th>
+                            <td>
+                                {% if equipment.is_active %}
+                                <span class="badge bg-success">Активно</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Неактивно</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Техническая информация -->
+                <div class="col-md-6">
+                    <h5 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-gear me-2"></i>Техническая информация
+                    </h5>
+
+                    <table class="table table-borderless">
+                        <tr>
+                            <th width="40%">Операционная система:</th>
+                            <td>{{ equipment.os_name or 'Неизвестно' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Версия ОС:</th>
+                            <td>{{ equipment.os_version or 'Не указана' }}</td>
+                        </tr>
+                        {% if equipment.architecture %}
+                        <tr>
+                            <th>Архитектура:</th>
+                            <td>{{ equipment.architecture }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if equipment.cpu_model %}
+                        <tr>
+                            <th>Процессор:</th>
+                            <td>{{ equipment.cpu_model }}
+                                {% if equipment.cpu_cores %}
+                                ({{ equipment.cpu_cores }} ядер)
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% if equipment.ram_total %}
+                        <tr>
+                            <th>Оперативная память:</th>
+                            <td>{{ equipment.ram_total }}</td>
+                        </tr>
+                        {% endif %}
+                    </table>
+                </div>
             </div>
-            
-            <div class="card-body">
-                <div class="row">
-                    <!-- Основная информация -->
-                    <div class="col-md-6">
-                        <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-info-circle me-2"></i>Основная информация
-                        </h5>
-                        
-                        <table class="table table-borderless">
-                            <tr>
-                                <th width="40%">IP-адрес:</th>
-                                <td><code class="fs-5">{{ equipment.ip_address }}</code></td>
-                            </tr>
-                            <tr>
-                                <th>Имя устройства:</th>
-                                <td>{{ equipment.hostname or '<span class="text-muted">Не указано</span>'|safe }}</td>
-                            </tr>
-                            <tr>
-                                <th>MAC-адрес:</th>
-                                <td><code>{{ equipment.mac_address or 'Неизвестно' }}</code></td>
-                            </tr>
-                            <tr>
-                                <th>VLAN ID:</th>
-                                <td>
-                                    {% if equipment.vlan_id %}
-                                    <span class="badge bg-info">VLAN {{ equipment.vlan_id }}</span>
-                                    {% else %}
-                                    <span class="text-muted">Не указан</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Статус:</th>
-                                <td>
-                                    {% if equipment.is_active %}
-                                    <span class="badge bg-success">Активно</span>
-                                    {% else %}
-                                    <span class="badge bg-secondary">Неактивно</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                    
-                    <!-- Техническая информация -->
-                    <div class="col-md-6">
-                        <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-gear me-2"></i>Техническая информация
-                        </h5>
-                        
-                        <table class="table table-borderless">
-                            <tr>
-                                <th width="40%">Операционная система:</th>
-                                <td>{{ equipment.os_name or 'Неизвестно' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Версия ОС:</th>
-                                <td>{{ equipment.os_version or 'Не указана' }}</td>
-                            </tr>
-                            {% if equipment.architecture %}
-                            <tr>
-                                <th>Архитектура:</th>
-                                <td>{{ equipment.architecture }}</td>
-                            </tr>
-                            {% endif %}
-                            {% if equipment.cpu_model %}
-                            <tr>
-                                <th>Процессор:</th>
-                                <td>{{ equipment.cpu_model }}
-                                    {% if equipment.cpu_cores %}
-                                    ({{ equipment.cpu_cores }} ядер)
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endif %}
-                            {% if equipment.ram_total %}
-                            <tr>
-                                <th>Оперативная память:</th>
-                                <td>{{ equipment.ram_total }}</td>
-                            </tr>
-                            {% endif %}
-                        </table>
-                    </div>
+
+            <!-- Организационная информация -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <h5 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-building me-2"></i>Организационная информация
+                    </h5>
+
+                    <table class="table table-borderless">
+                        <tr>
+                            <th width="40%">Отдел:</th>
+                            <td>
+                                {% if equipment.department %}
+                                <span class="badge bg-info">{{ equipment.department }}</span>
+                                {% else %}
+                                <span class="text-muted">Не указан</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Инвентарный номер:</th>
+                            <td>{{ equipment.inventory_number or 'Не указан' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Расположение:</th>
+                            <td>{{ equipment.location or 'Не указано' }}</td>
+                        </tr>
+                        <tr>
+                            <th>Ответственное лицо:</th>
+                            <td>{{ equipment.responsible_person or 'Не указано' }}</td>
+                        </tr>
+                        {% if equipment.warranty_until %}
+                        <tr>
+                            <th>Гарантия до:</th>
+                            <td>{{ equipment.warranty_until.strftime('%d.%m.%Y') }}</td>
+                        </tr>
+                        {% endif %}
+                    </table>
                 </div>
-                
-                <!-- Организационная информация -->
-                <div class="row mt-4">
-                    <div class="col-md-6">
-                        <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-building me-2"></i>Организационная информация
-                        </h5>
-                        
-                        <table class="table table-borderless">
-                            <tr>
-                                <th width="40%">Отдел:</th>
-                                <td>
-                                    {% if equipment.department %}
-                                    <span class="badge bg-info">{{ equipment.department }}</span>
-                                    {% else %}
-                                    <span class="text-muted">Не указан</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Инвентарный номер:</th>
-                                <td>{{ equipment.inventory_number or 'Не указан' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Расположение:</th>
-                                <td>{{ equipment.location or 'Не указано' }}</td>
-                            </tr>
-                            <tr>
-                                <th>Ответственное лицо:</th>
-                                <td>{{ equipment.responsible_person or 'Не указано' }}</td>
-                            </tr>
-                            {% if equipment.warranty_until %}
-                            <tr>
-                                <th>Гарантия до:</th>
-                                <td>{{ equipment.warranty_until.strftime('%d.%m.%Y') }}</td>
-                            </tr>
-                            {% endif %}
-                        </table>
-                    </div>
-                    
-                    <!-- Временные метки -->
-                    <div class="col-md-6">
-                        <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-clock-history me-2"></i>Временные метки
-                        </h5>
-                        
-                        <table class="table table-borderless">
-                            <tr>
-                                <th width="40%">Впервые обнаружено:</th>
-                                <td>
-                                    {% if equipment.first_discovered %}
-                                        {{ equipment.first_discovered.strftime('%d.%m.%Y %H:%M') }}
-                                    {% else %}
-                                        <span class="text-muted">Нет данных</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Последняя активность:</th>
-                                <td>
-                                    {% if equipment.last_seen %}
-                                        {{ equipment.last_seen.strftime('%d.%m.%Y %H:%M') }}
-                                    {% else %}
-                                        <span class="text-muted">Нет данных</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
+
+                <!-- Временные метки -->
+                <div class="col-md-6">
+                    <h5 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-clock-history me-2"></i>Временные метки
+                    </h5>
+
+                    <table class="table table-borderless">
+                        <tr>
+                            <th width="40%">Впервые обнаружено:</th>
+                            <td>
+                                {% if equipment.first_discovered %}
+                                    {{ equipment.first_discovered.strftime('%d.%m.%Y %H:%M') }}
+                                {% else %}
+                                    <span class="text-muted">Нет данных</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Последняя активность:</th>
+                            <td>
+                                {% if equipment.last_seen %}
+                                    {{ equipment.last_seen.strftime('%d.%m.%Y %H:%M') }}
+                                {% else %}
+                                    <span class="text-muted">Нет данных</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
                 </div>
-                
-                <!-- Дополнительная информация -->
-                {% if equipment.storage_info or equipment.gpu_info %}
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <h5 class="border-bottom pb-2 mb-3">
-                            <i class="bi bi-hdd me-2"></i>Дополнительная информация
-                        </h5>
-                        <div class="row">
-                            {% if equipment.storage_info %}
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h6 class="mb-0">Хранилище</h6>
-                                    </div>
-                                    <div class="card-body">
-                                        <pre class="mb-0">{{ equipment.storage_info }}</pre>
-                                    </div>
+            </div>
+
+            <!-- Дополнительная информация -->
+            {% if equipment.storage_info or equipment.gpu_info %}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-hdd me-2"></i>Дополнительная информация
+                    </h5>
+                    <div class="row">
+                        {% if equipment.storage_info %}
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Хранилище</h6>
+                                </div>
+                                <div class="card-body">
+                                    <pre class="mb-0">{{ equipment.storage_info }}</pre>
                                 </div>
                             </div>
-                            {% endif %}
-                            {% if equipment.gpu_info %}
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h6 class="mb-0">Графика</h6>
-                                    </div>
-                                    <div class="card-body">
-                                        <pre class="mb-0">{{ equipment.gpu_info }}</pre>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endif %}
                         </div>
+                        {% endif %}
+                        {% if equipment.gpu_info %}
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Графика</h6>
+                                </div>
+                                <div class="card-body">
+                                    <pre class="mb-0">{{ equipment.gpu_info }}</pre>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
-                {% endif %}
-                
-                <!-- Действия -->
-                <div class="row mt-4">
-                    <div class="col-12 text-center">
-                        <a href="/equipment" class="btn btn-secondary me-2">
-                            <i class="bi bi-arrow-left"></i> К списку
-                        </a>
-                        <a href="/equipment/{{ equipment.id }}/edit" class="btn btn-warning me-2">
-                            <i class="bi bi-pencil"></i> Редактировать
-                        </a>
-                        <a href="/scan" class="btn btn-primary">
-                            <i class="bi bi-search"></i> Новое сканирование
-                        </a>
-                    </div>
+            </div>
+            {% endif %}
+
+            <!-- Действия -->
+            <div class="row mt-4">
+                <div class="col-12 text-center">
+                    <a href="{{ url_for('equipment_list') }}" class="btn btn-secondary me-2">
+                        <i class="bi bi-arrow-left"></i> К списку
+                    </a>
+                    {% if current_user.role != 'guest' and (current_user.role == 'it' or equipment.department == current_user.department) %}
+                    <a href="{{ url_for('equipment_edit', equipment_id=equipment.id) }}" class="btn btn-warning me-2">
+                        <i class="bi bi-pencil"></i> Редактировать
+                    </a>
+                    {% endif %}
+                    {% if current_user.role != 'guest' %}
+                    <a href="{{ url_for('scan_network') }}" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Новое сканирование
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+</div>
+{% endblock %}

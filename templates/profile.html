@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Профиль пользователя{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-person-circle me-2"></i>Профиль пользователя
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 text-center mb-4">
+                            <div class="mb-3">
+                                <i class="bi bi-person-circle display-1 text-primary"></i>
+                            </div>
+                            <h5>{{ current_user.full_name or current_user.username }}</h5>
+                            <span class="badge {% if current_user.role == 'it' %}bg-primary{% elif current_user.role == 'other' %}bg-success{% else %}bg-secondary{% endif %}">
+                                {{ current_user.role }}
+                            </span>
+                        </div>
+                        <div class="col-md-8">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th width="40%">Логин:</th>
+                                    <td>{{ current_user.username }}</td>
+                                </tr>
+                                <tr>
+                                    <th>ФИО:</th>
+                                    <td>{{ current_user.full_name or 'Не указано' }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Отдел:</th>
+                                    <td>{{ current_user.department or 'Не указан' }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Роль:</th>
+                                    <td>
+                                        {% if current_user.role == 'it' %}
+                                        <span class="badge bg-primary">IT отдел</span>
+                                        {% elif current_user.role == 'other' %}
+                                        <span class="badge bg-success">Другой отдел</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Гость</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Дата регистрации:</th>
+                                    <td>{{ current_user.created_at.strftime('%d.%m.%Y %H:%M') if current_user.created_at else 'Неизвестно' }}</td>
+                                </tr>
+                                <!-- Удаляем или комментируем строку с last_login -->
+<!--
+<tr>
+    <th>Последний вход:</th>
+    <td>{{ current_user.last_login.strftime('%d.%m.%Y %H:%M') if current_user.last_login else 'Неизвестно' }}</td>
+</tr>
+-->
+                            </table>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Назад
+                        </a>
+                        <a href="{{ url_for('profile_edit') }}" class="btn btn-primary">
+                            <i class="bi bi-pencil"></i> Редактировать профиль
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
