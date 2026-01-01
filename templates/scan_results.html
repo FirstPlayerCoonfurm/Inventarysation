@@ -1,133 +1,117 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Результаты сканирования - IT Inventory</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
-</head>
-<body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="/">IT Inventory</a>
-            <div>
-                <a href="/scan" class="btn btn-outline-light me-2">
-                    <i class="bi bi-arrow-left"></i> Назад
-                </a>
-            </div>
+{% extends "base.html" %}
+
+{% block title %}Результаты сканирования{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header {% if results and results|length > 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+            <h4 class="mb-0">
+                <i class="bi bi-check-circle me-2"></i>Результаты сканирования
+            </h4>
         </div>
-    </nav>
-
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header {% if results and results|length > 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
-                <h4 class="mb-0">
-                    <i class="bi bi-check-circle me-2"></i>Результаты сканирования
-                </h4>
-            </div>
-            <div class="card-body">
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <h5>Информация о сканировании</h5>
-                        <table class="table table-sm">
-                            <tr>
-                                <th width="40%">Подсеть:</th>
-                                <td><code>{{ subnet }}</code></td>
-                            </tr>
-                            {% if vlan_id %}
-                            <tr>
-                                <th>VLAN ID:</th>
-                                <td><span class="badge bg-info">VLAN {{ vlan_id }}</span></td>
-                            </tr>
-                            {% endif %}
-                            <tr>
-                                <th>Дата и время:</th>
-                                <td>{{ timestamp }}</td>
-                            </tr>
-                            <tr>
-                                <th>Найдено устройств:</th>
-                                <td>
-                                    <span class="badge {% if results and results|length > 0 %}bg-success{% else %}bg-secondary{% endif %}">
-                                        {{ results|length }}
-                                    </span>
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
-
-                {% if results and results|length > 0 %}
-                <h5 class="mb-3">Найденные устройства</h5>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>IP-адрес</th>
-                                <th>Имя устройства</th>
-                                <th>MAC-адрес</th>
-                                <th>Операционная система</th>
-                                <th>Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for device in results %}
-                            <tr>
-                                <td><code>{{ device.ip_address }}</code></td>
-                                <td>{{ device.hostname or 'Неизвестно' }}</td>
-                                <td><code>{{ device.mac_address or 'Неизвестно' }}</code></td>
-                                <td>{{ device.os_name or 'Неизвестно' }}</td>
-                                <td>
-                                    <span class="badge bg-success">Online</span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
+        <div class="card-body">
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <h5>Информация о сканировании</h5>
+                    <table class="table table-sm">
+                        <tr>
+                            <th width="40%">Подсеть:</th>
+                            <td><code>{{ subnet }}</code></td>
+                        </tr>
+                        {% if vlan_id %}
+                        <tr>
+                            <th>VLAN ID:</th>
+                            <td><span class="badge bg-info">VLAN {{ vlan_id }}</span></td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <th>Дата и время:</th>
+                            <td>{{ timestamp }}</td>
+                        </tr>
+                        <tr>
+                            <th>Найдено устройств:</th>
+                            <td>
+                                <span class="badge {% if results and results|length > 0 %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ results|length }}
+                                </span>
+                            </td>
+                        </tr>
                     </table>
                 </div>
-                {% else %}
-                <div class="alert alert-warning">
-                    <div class="text-center py-4">
-                        <i class="bi bi-exclamation-triangle display-1 text-warning d-block mb-3"></i>
-                        <h4>Устройства не найдены</h4>
-                        <p class="text-muted">В указанной подсети не обнаружено активных устройств.</p>
-                        <p class="text-muted">Возможные причины:</p>
-                        <ul class="text-muted">
-                            <li>Устройства выключены или не подключены к сети</li>
-                            <li>Брандмауэр блокирует ping-запросы</li>
-                            <li>Неверно указана подсеть</li>
-                        </ul>
-                    </div>
-                </div>
-                {% endif %}
+            </div>
 
-                <div class="d-flex justify-content-between mt-4">
-                    <a href="/scan" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left"></i> Новое сканирование
+            {% if results and results|length > 0 %}
+            <h5 class="mb-3">Найденные устройства</h5>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>IP-адрес</th>
+                            <th>Имя устройства</th>
+                            <th>MAC-адрес</th>
+                            <th>Операционная система</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for device in results %}
+                        <tr>
+                            <td><code>{{ device.ip_address }}</code></td>
+                            <td>{{ device.hostname or 'Неизвестно' }}</td>
+                            <td><code>{{ device.mac_address or 'Неизвестно' }}</code></td>
+                            <td>{{ device.os_name or 'Неизвестно' }}</td>
+                            <td>
+                                <span class="badge bg-success">Online</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                <div class="text-center py-4">
+                    <i class="bi bi-exclamation-triangle display-1 text-warning d-block mb-3"></i>
+                    <h4>Устройства не найдены</h4>
+                    <p class="text-muted">В указанной подсети не обнаружено активных устройств.</p>
+                    <p class="text-muted">Возможные причины:</p>
+                    <ul class="text-muted">
+                        <li>Устройства выключены или не подключены к сети</li>
+                        <li>Брандмауэр блокирует ping-запросы</li>
+                        <li>Неверно указана подсеть</li>
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-flex justify-content-between mt-4">
+                <a href="{{ url_for('scan_network') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Новое сканирование
+                </a>
+                <div>
+                    <a href="{{ url_for('equipment_list') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-list-ul"></i> К списку оборудования
                     </a>
-                    <div>
-                        <a href="/equipment" class="btn btn-outline-primary">
-                            <i class="bi bi-list-ul"></i> К списку оборудования
-                        </a>
-                        {% if results and results|length > 0 %}
-                        <button class="btn btn-success" onclick="saveAllDevices()">
-                            <i class="bi bi-save"></i> Сохранить все в базу
-                        </button>
-                        {% endif %}
-                    </div>
+                    {% if results and results|length > 0 %}
+                    <button class="btn btn-success" onclick="saveAllDevices()">
+                        <i class="bi bi-save"></i> Сохранить все в базу
+                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        function saveAllDevices() {
-            if (confirm('Сохранить все найденные устройства в базу данных?')) {
-                // Здесь можно добавить AJAX запрос для сохранения
-                alert('Функция сохранения всех устройств будет реализована в следующей версии');
-            }
+{% block extra_scripts %}
+<script>
+    function saveAllDevices() {
+        if (confirm('Сохранить все найденные устройства в базу данных?')) {
+            // Здесь можно добавить AJAX запрос для сохранения
+            alert('Функция сохранения всех устройств будет реализована в следующей версии');
         }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    }
+</script>
+{% endblock %}
