@@ -151,6 +151,10 @@ def login():
 
     if user and check_password_hash(user.password, password):
         login_user(user, remember=True)
+<<<<<<< HEAD
+=======
+        # Убрали обновление last_login
+>>>>>>> a8fea06af094240c9b7666caa4c185a29ac87a50
         flash(f'Добро пожаловать, {user.full_name}!', 'success')
         return redirect(url_for('dashboard'))
 
@@ -910,8 +914,29 @@ if __name__ == '__main__':
             # Создаем таблицы, если их нет
             db.create_all()
 
+<<<<<<< HEAD
             # Создаем тестового IT-пользователя если его нет
             if not User.query.filter_by(username='admin').first():
+=======
+            # Проверяем наличие колонки last_login в таблице user
+            # Если её нет, добавляем
+            try:
+                from sqlalchemy import inspect, text
+                inspector = inspect(db.engine)
+                columns = [col['name'] for col in inspector.get_columns('user')]
+
+                if 'last_login' not in columns:
+                    print("⚠️  Колонка last_login отсутствует, добавляем...")
+                    db.session.execute(text('ALTER TABLE "user" ADD COLUMN last_login TIMESTAMP'))
+                    db.session.commit()
+                    print("✅ Колонка last_login добавлена")
+            except Exception as e:
+                print(f"⚠️  Не удалось проверить/добавить колонку last_login: {e}")
+
+            # Создаем тестового IT-пользователя если его нет
+            if not User.query.filter_by(username='admin').first():
+                from werkzeug.security import generate_password_hash
+>>>>>>> a8fea06af094240c9b7666caa4c185a29ac87a50
                 admin_user = User(
                     username='admin',
                     password=generate_password_hash('admin123'),
@@ -927,6 +952,7 @@ if __name__ == '__main__':
             print("✅ Таблицы базы данных проверены")
         except Exception as e:
             print(f"⚠️  Ошибка при создании таблиц: {e}")
+<<<<<<< HEAD
 
     if not wait_for_database():
         print("⚠️  Предупреждение: База данных недоступна, но приложение запускается")
@@ -938,3 +964,5 @@ if __name__ == '__main__':
 
     # Убедимся, что Flask слушает на всех интерфейсах
     app.run(host='0.0.0.0', port=5000, debug=False)  # debug=False для продакшн
+=======
+>>>>>>> a8fea06af094240c9b7666caa4c185a29ac87a50
