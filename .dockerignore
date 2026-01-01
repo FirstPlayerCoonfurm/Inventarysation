@@ -1,0 +1,25 @@
+# .dockerignore
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+logs/
+scans/
+*.log
+*.sqlite
+*.db
+.DS_Store
+Thumbs.db
+docker-compose.override.yml
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
