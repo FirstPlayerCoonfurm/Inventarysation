@@ -7,3 +7,5 @@ netifaces==0.11.0
 # Убираем scapy и psutil - они могут вызывать проблемы
 # psutil==5.9.5
 # scapy==2.5.0
+Flask-Login==0.6.3
+Werkzeug==3.0.1
